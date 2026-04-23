@@ -1,11 +1,10 @@
 "use client"
-import { Grid, KeyboardControls, OrbitControls, ScrollControlsState } from '@react-three/drei';
+import { KeyboardControls, OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import { CuboidCollider, Physics, RapierRigidBody, RigidBody } from '@react-three/rapier';
 import { useControls } from 'leva';
 import * as THREE from 'three';
 import { Vehicle } from './jeep/vehicle';
-import { LeafSystem } from './plane';
 import { WebGPURenderer } from 'three/webgpu';
 import { useReducer, useRef } from 'react';
 import { MobileControls } from '../MobileControls';

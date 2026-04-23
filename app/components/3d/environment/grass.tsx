@@ -113,7 +113,7 @@ export function InfiniteGrass({ count = 25000, fieldSize = 60, chasisBodyRef }: 
 		const center = vec3(wrappedX, 0, wrappedZ);
 		// Strong displacement: tracked areas flatten blades close to ground.
 
-		const flattenScale = max(float(0.03), float(1.0).sub(aFlatten.mul(0.93)));
+		const flattenScale = max(float(0.0), float(1.0).sub(aFlatten));
 		const flattenedHeight = positionLocal.y.mul(flattenScale);
 		const billboardOffset = uniforms.cameraRight.mul(positionLocal.x);
 		material.positionNode = center.add(billboardOffset).add(vec3(0, flattenedHeight, 0));
@@ -175,7 +175,7 @@ export function InfiniteGrass({ count = 25000, fieldSize = 60, chasisBodyRef }: 
 			const wrappedX = ((((homes[i9 + 0] - cameraX + half) % fieldSize) + fieldSize) % fieldSize) - half + cameraX;
 			const wrappedZ = ((((homes[i9 + 2] - cameraZ + half) % fieldSize) + fieldSize) % fieldSize) - half + cameraZ;
 
-			let flattenStrength = 0;
+			let flattenStrength = flatten[i3] * 0.96;
 			for (let j = 0; j < maxSamples; j++) {
 				const base = j * 4;
 				if (historyDataRef.current[base + 3] < 0.5) continue;

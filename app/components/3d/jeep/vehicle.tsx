@@ -60,8 +60,8 @@ export const Vehicle = ({ position, rotation, chasisBodyRef, mobileControls }: V
 	});
 
 	const cam = useControls('vehicle-camera', {
-		offset: { value: { x: 8, y: 5, z: 8 }, step: 0.1 },
-		targetOffset: { value: { x: 0, y: 1.0, z: 0 }, step: 0.1 },
+		offset: { value: { x: 5.0, y: 14.3, z: 10.3 }, step: 0.1 },
+		targetOffset: { value: { x: 0.4, y: -1.0, z: 1.2 }, step: 0.1 },
 		smoothing: { value: 0.01, min: 0.0001, max: 0.1, step: 0.001 },
 	});
 
