@@ -1,16 +1,24 @@
 "use client"
 import { KeyboardControls, OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
-import { CuboidCollider, Physics, RapierRigidBody, RigidBody } from '@react-three/rapier';
-import { useControls } from 'leva';
+import { Physics, RapierRigidBody } from '@react-three/rapier';
 import * as THREE from 'three';
-import { Vehicle } from './jeep/vehicle';
-import { WebGPURenderer } from 'three/webgpu';
-import { useReducer, useRef } from 'react';
+
+import { useEffect, useReducer, useRef, useState } from 'react';
 import { MobileControls } from '../MobileControls';
 import { InfiniteGrass } from './environment/grass';
+import { WorldAtmosphere } from './environment/world-atmosphere';
+import { WorldGround } from './environment/world-ground';
+import { WorldLighting } from './environment/world-lighting';
+import { InfiniteRoad } from './environment/infinite-road';
+import { initializeWorldControls } from '@/app/controls';
+import { GRASS_CONFIG } from '@/app/controls/grassControls';
+import { ENV_CONFIG, subscribeToEnvConfig } from '@/app/controls/environmentControls';
+import { WebGPURenderer } from 'three/webgpu';
+import { Vehicle } from './environment/vehicle';
+import { LeafSystem } from './plane';
 const spawn = {
-	position: [0, 2, 0] as THREE.Vector3Tuple,
+	position: [0, 10, 0] as THREE.Vector3Tuple,
 	rotation: [0, 0, 0] as THREE.Vector3Tuple,
 };
 
@@ -22,23 +30,6 @@ const controls = [
 	{ name: 'brake', keys: ['Space'] },
 	{ name: 'reset', keys: ['KeyR'] },
 ];
-
-
-
-
-
-const Scene = () => {
-	return (
-		<>
-			{/* Ground Collider */}
-			<RigidBody type="fixed" colliders="cuboid">
-				<CuboidCollider args={[500, 0.5, 500]} position={[0, -0.5, 0]} />
-			</RigidBody>
-
-			<gridHelper args={[100, 100, 0x444444, 0x222222]} />
-		</>
-	);
-};
 type ControlState = {
 	forward: boolean; back: boolean
 	left: boolean; right: boolean
@@ -55,32 +46,45 @@ export function Sketch() {
 		(_: ControlState, next: ControlState) => next,
 		initialControls
 	)
-	const { debug, orbitControls } = useControls('physics', { debug: false, orbitControls: false });
+	
+	const [envConfig, setEnvConfig] = useState(() => ({ ...ENV_CONFIG }));
+	useEffect(() => {
+		return subscribeToEnvConfig(() => {
+			setEnvConfig({ ...ENV_CONFIG });
+		});
+	}, []);
+
 	const chasisBodyRef = useRef<RapierRigidBody>(null!)
+	useEffect(() => {
+		initializeWorldControls();
+	}, []);
 	return (
 		<>
 			<Canvas
 				shadows
 				camera={{ fov: 45 }}
-				gl={
+					gl={
 					async (props) => {
 						const r = new WebGPURenderer(props)
 						return await r.init()
 					}
 				}
 			>
-				<color attach="background" args={['#111']} />
-				<Physics debug={debug} >
+				<WorldAtmosphere />
+				<Physics debug={envConfig.physicsDebug} >
 					<KeyboardControls map={controls}>
 						<Vehicle position={spawn.position} rotation={spawn.rotation} chasisBodyRef={chasisBodyRef} mobileControls={mobileControls} />
 					</KeyboardControls>
-					<Scene />
+					<WorldGround />
+					<InfiniteRoad chasisBodyRef={chasisBodyRef} />
+		
 				</Physics>
-				<ambientLight intensity={0.5} />
-				<directionalLight position={[10, 10, 5]} intensity={1} castShadow />
-				{orbitControls && <OrbitControls makeDefault />}
-				{/* <LeafSystem jeepRef={chasisBodyRef} /> */}
-				<InfiniteGrass chasisBodyRef={chasisBodyRef} />
+				<WorldLighting />
+				{envConfig.orbitControls && <OrbitControls makeDefault />}
+				<InfiniteGrass
+					chasisBodyRef={chasisBodyRef}
+					fieldSize={90}
+				/>
 			</Canvas>
 
 			<MobileControls onChange={setMobileControls} />

@@ -1,5 +1,5 @@
 // components/MobileControls.tsx
-import { useReducer, useCallback } from 'react'
+import { useReducer, useCallback, useEffect } from 'react'
 
 type ControlState = {
   forward: boolean
@@ -40,20 +40,32 @@ export const MobileControls = ({ onChange }: Props) => {
 
   const press = useCallback((key: keyof ControlState) => {
     dispatch({ type: 'PRESS', key })
-    onChange({ ...state, [key]: true })
-  }, [state, onChange])
+  }, [])
 
   const release = useCallback((key: keyof ControlState) => {
     dispatch({ type: 'RELEASE', key })
-    onChange({ ...state, [key]: false })
+  }, [])
+
+  // Keep parent in sync from the source of truth (reducer state).
+  useEffect(() => {
+    onChange(state)
   }, [state, onChange])
 
   const btn = (key: keyof ControlState, label: string) => (
     <button
       key={key}
-      onPointerDown={() => press(key)}
-      onPointerUp={() => release(key)}
+      onPointerDown={(e) => {
+        e.preventDefault()
+        press(key)
+      }}
+      onPointerUp={(e) => {
+        e.preventDefault()
+        release(key)
+      }}
+      onPointerCancel={() => release(key)}
       onPointerLeave={() => release(key)}
+      onTouchStart={(e) => e.preventDefault()}
+      onContextMenu={(e) => e.preventDefault()}
       style={{
         width: 64,
         height: 64,
@@ -69,6 +81,9 @@ export const MobileControls = ({ onChange }: Props) => {
         justifyContent: 'center',
         cursor: 'pointer',
         userSelect: 'none',
+        WebkitUserSelect: 'none',
+        WebkitTouchCallout: 'none',
+        WebkitTapHighlightColor: 'transparent',
         touchAction: 'none',
         backdropFilter: 'blur(4px)',
       }}
@@ -89,6 +104,9 @@ export const MobileControls = ({ onChange }: Props) => {
       padding: '0 24px',
       pointerEvents: 'none',
       zIndex: 100,
+      userSelect: 'none',
+      WebkitUserSelect: 'none',
+      WebkitTouchCallout: 'none',
     }}>
       {/* Left side — steering */}
       <div style={{
