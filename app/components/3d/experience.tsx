@@ -7,10 +7,9 @@ import * as THREE from 'three';
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { MobileControls } from '../MobileControls';
 import { InfiniteGrass } from './environment/grass';
-import { WorldAtmosphere } from './environment/world-atmosphere';
+import { Sky } from './environment/sky';
 import { WorldGround } from './environment/world-ground';
 import { WorldLighting } from './environment/world-lighting';
-import { InfiniteRoad } from './environment/infinite-road';
 import { initializeWorldControls } from '@/app/controls';
 import { GRASS_CONFIG } from '@/app/controls/grassControls';
 import { ENV_CONFIG, subscribeToEnvConfig } from '@/app/controls/environmentControls';
@@ -70,13 +69,12 @@ export function Sketch() {
 					}
 				}
 			>
-				<WorldAtmosphere />
+				<Sky />
 				<Physics debug={envConfig.physicsDebug} >
 					<KeyboardControls map={controls}>
 						<Vehicle position={spawn.position} rotation={spawn.rotation} chasisBodyRef={chasisBodyRef} mobileControls={mobileControls} />
 					</KeyboardControls>
 					<WorldGround />
-					<InfiniteRoad chasisBodyRef={chasisBodyRef} />
 		
 				</Physics>
 				<WorldLighting />

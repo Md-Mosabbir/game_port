@@ -52,8 +52,10 @@ export function InfiniteGrass({ fieldSize = 90, chasisBodyRef }: InfiniteGrassPr
 			windStrength: uniform(config.waveStrength),
 			windFrequency: uniform(0.24),
 			windSpeed: uniform(config.waveSpeed),
+			colorBase: uniform(new THREE.Color(config.colorBase)),
+			colorTip: uniform(new THREE.Color(config.colorTip)),
 		}),
-		[fieldSize, config.waveStrength, config.waveSpeed]
+		[fieldSize, config.waveStrength, config.waveSpeed, config.colorBase, config.colorTip]
 	);
 
 	const historyData = useMemo(() => new Float32Array(HISTORY_SIZE * 4), []);
@@ -187,9 +189,7 @@ export function InfiniteGrass({ fieldSize = 90, chasisBodyRef }: InfiniteGrassPr
 			.add(vec3(windBend, flattenedHeight, windBend.mul(0.5)));
 
 		// More saturated color ramp for a vibrant field.
-		const base = vec3(0.06, 0.32, 0.10);
-		const tip = vec3(0.38, 0.84, 0.22);
-		material.colorNode = mix(base, tip, aTipness);
+		material.colorNode = mix(uniforms.colorBase, uniforms.colorTip, aTipness);
 
 		return material;
 	}, [uniforms]);

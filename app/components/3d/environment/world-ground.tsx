@@ -1,80 +1,86 @@
 import { CuboidCollider, RigidBody } from '@react-three/rapier';
-import { useEffect, useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
+import { useFrame } from '@react-three/fiber';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
+import { positionWorld, texture, uv } from 'three/tsl';
 
 export const WorldGround = () => {
-	const marbleTileTexture = useMemo(() => {
+	const meshRef = useRef<THREE.Mesh>(null!);
+	
+	const fieldTexture = useMemo(() => {
 		const canvas = document.createElement('canvas');
 		canvas.width = 512;
 		canvas.height = 512;
 		const ctx = canvas.getContext('2d');
 		if (!ctx) return null;
 
-		const tileSize = 64;
-		const grout = 4;
+		// Base light grassfield green
+		ctx.fillStyle = '#7db35b';
+		ctx.fillRect(0, 0, 512, 512);
 
-		ctx.fillStyle = '#f5f5f0';
-		ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-		for (let y = 0; y < canvas.height; y += tileSize) {
-			for (let x = 0; x < canvas.width; x += tileSize) {
-				const tone = 236 + ((x / tileSize + y / tileSize) % 4) * 4;
-				ctx.fillStyle = `rgb(${tone}, ${tone}, ${tone + 6})`;
-				ctx.fillRect(x + grout, y + grout, tileSize - grout * 2, tileSize - grout * 2);
-
-				// Soft vein strokes to fake marble details per tile.
-				ctx.strokeStyle = 'rgba(175, 175, 188, 0.28)';
-				ctx.lineWidth = 1.2;
-				ctx.beginPath();
-				ctx.moveTo(x + grout + 8, y + grout + 12);
-				ctx.bezierCurveTo(
-					x + tileSize * 0.45,
-					y + tileSize * 0.15,
-					x + tileSize * 0.7,
-					y + tileSize * 0.8,
-					x + tileSize - grout - 8,
-					y + tileSize - grout - 10
-				);
-				ctx.stroke();
-			}
+		// Add yellowish "fallen leaf" freckles
+		for (let i = 0; i < 400; i++) {
+			const x = Math.random() * 512;
+			const y = Math.random() * 512;
+			const size = Math.random() * 2.5 + 1;
+			const opacity = Math.random() * 0.4 + 0.2;
+			ctx.fillStyle = `rgba(227, 192, 77, ${opacity})`;
+			ctx.beginPath();
+			ctx.arc(x, y, size, 0, Math.PI * 2);
+			ctx.fill();
 		}
 
-		const texture = new THREE.CanvasTexture(canvas);
-		texture.wrapS = THREE.RepeatWrapping;
-		texture.wrapT = THREE.RepeatWrapping;
-		texture.repeat.set(60, 60);
-		texture.colorSpace = THREE.SRGBColorSpace;
-		texture.anisotropy = 8;
-		texture.needsUpdate = true;
-		return texture;
+		const tex = new THREE.CanvasTexture(canvas);
+		tex.wrapS = THREE.RepeatWrapping;
+		tex.wrapT = THREE.RepeatWrapping;
+		tex.anisotropy = 8;
+		return tex;
 	}, []);
 
-	useEffect(() => {
-		return () => {
-			marbleTileTexture?.dispose();
-		};
-	}, [marbleTileTexture]);
+	const material = useMemo(() => {
+		const m = new MeshStandardNodeMaterial({
+			roughness: 0.9,
+			metalness: 0.02,
+		});
+
+		// Use TSL to map the texture using world coordinates
+		// This makes the ground appear infinite as the mesh moves with the camera
+		if (fieldTexture) {
+			const worldUV = positionWorld.xz.mul(0.05); // Scale of the texture
+			m.colorNode = texture(fieldTexture, worldUV);
+		}
+
+		return m;
+	}, [fieldTexture]);
+
+	useFrame((state) => {
+		if (meshRef.current) {
+			// Center the ground mesh on the camera's XZ position
+			// This creates the illusion of an infinite plane
+			meshRef.current.position.x = state.camera.position.x;
+			meshRef.current.position.z = state.camera.position.z;
+		}
+	});
 
 	return (
 		<>
-			{/* Physics ground: invisible collider used by Rapier */}
+			{/* Physics ground: we keep this large but static for now, 
+			    or we could move it, but static is usually better for performance 
+				unless we need to go BEYOND 500 units. */}
 			<RigidBody type="fixed" colliders="cuboid" friction={1.2}>
-				<CuboidCollider args={[500, 0.5, 500]} position={[0, -0.5, 0]} />
+				<CuboidCollider args={[1000, 0.5, 1000]} position={[0, -0.5, 0]} />
 			</RigidBody>
 
-			{/* Visual plane: receives shadows and gives a natural horizon. */}
-			<mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow position={[0, -0.01, 0]}>
-				<planeGeometry args={[1200, 1200, 1, 1]} />
-				{/* Faux marble look: bright base, low roughness, slight clear coat sheen. */}
-				<meshPhysicalMaterial
-					color="#f7f7fb"
-					map={marbleTileTexture ?? undefined}
-					roughness={0.24}
-					metalness={0}
-					clearcoat={0.65}
-					clearcoatRoughness={0.32}
-					reflectivity={0.6}
-				/>
+			{/* Visual plane: Moves with the camera, texture is world-mapped */}
+			<mesh 
+				ref={meshRef}
+				rotation={[-Math.PI / 2, 0, 0]} 
+				receiveShadow 
+				position={[0, -0.01, 0]}
+				material={material}
+			>
+				<planeGeometry args={[400, 400, 1, 1]} />
 			</mesh>
 		</>
 	);

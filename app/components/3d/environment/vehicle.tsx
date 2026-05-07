@@ -115,17 +115,21 @@ export const Vehicle = ({ position, rotation, chasisBodyRef, mobileControls }: V
 			chassisRigidBody.setAngvel(new rapier.Vector3(0, 0, 0), true);
 		}
 
-		// Camera
+		// Camera follow: uses world position + fixed offset (no rotation follow)
+		const bodyPos = chasisMeshRef.current.getWorldPosition(_bodyPosition);
 		const cameraPos = _cameraPosition;
-		cameraPos.set(CAMERA_CONFIG.offsetX, CAMERA_CONFIG.offsetY, CAMERA_CONFIG.offsetZ);
-		cameraPos.applyMatrix4(chasisMeshRef.current.matrixWorld);
+		cameraPos.set(
+			bodyPos.x + CAMERA_CONFIG.offsetX,
+			bodyPos.y + CAMERA_CONFIG.offsetY,
+			bodyPos.z + CAMERA_CONFIG.offsetZ
+		);
 		cameraPos.y = Math.max(cameraPos.y, chassisRigidBody.translation().y + 0.5);
 		// Vector3.lerp moves from current value toward target by a blend factor [0..1].
 		// Docs: https://threejs.org/docs/#api/en/math/Vector3.lerp
 		smoothedCameraPosition.lerp(cameraPos, t);
 		state.camera.position.copy(smoothedCameraPosition);
 
-		const bodyPos = chasisMeshRef.current.getWorldPosition(_bodyPosition);
+
 		const cameraTarget = _cameraTarget;
 		cameraTarget.copy(bodyPos);
 		cameraTarget.y += 0.8;
@@ -167,7 +171,7 @@ export const Vehicle = ({ position, rotation, chasisBodyRef, mobileControls }: V
 						// Slides the visual model around the physics pivot point.
 						position={[config.wheelOffsetX, config.wheelOffsetY, config.wheelOffsetZ]}
 					>
-						<Clone object={wheelGltf.scene} castShadow />
+						<Clone object={wheelGltf.scene} castShadow rotation={[0, index % 2 === 0 ? Math.PI : 0, 0]} />
 					</group>
 				</group>
 			))}
