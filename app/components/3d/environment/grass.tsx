@@ -18,9 +18,11 @@ import {
 	uvec2,
 	vec3,
 	vec4,
+	uint,
 } from 'three/tsl';
 import { extend, useFrame } from '@react-three/fiber';
 import { GRASS_CONFIG, subscribeToGrassConfig } from '@/app/controls/grassControls';
+import { WheelTracker } from './wheel-track';
 
 
 extend({ MeshBasicNodeMaterial });
@@ -43,10 +45,48 @@ const _tmpWheel = new THREE.Vector3();
 const HISTORY_SIZE = 128;
 
 export function InfiniteGrass({ fieldSize = 90, chasisBodyRef }: InfiniteGrassProps) {
-	const historyCursorRef = useRef(0);
-	// RGBA float texture: R=worldX, G=worldZ, B=unused, A=active flag
-	const historyDataRef = useRef<Float32Array>(new Float32Array(HISTORY_SIZE * 4));
-	const historyTextureRef = useRef<THREE.DataTexture | null>(null);
+	const trackers = useMemo(() => [
+		new WheelTracker(),
+		new WheelTracker(),
+		new WheelTracker(),
+		new WheelTracker(),
+	], []);
+
+	// ── FBO Tracking System Initialization ────────────────────────────────────
+	// This scene is private and only used to render the "mask" texture
+	const trackScene = useMemo(() => new THREE.Scene(), []);
+	const trackCamera = useMemo(() => {
+		const cam = new THREE.OrthographicCamera(-fieldSize / 2, fieldSize / 2, fieldSize / 2, -fieldSize / 2, 0.1, 20);
+		cam.position.set(0, 10, 0);
+		cam.lookAt(0, 0, 0);
+		return cam;
+	}, [fieldSize]);
+
+	const renderTarget = useMemo(() => new THREE.WebGLRenderTarget(512, 512, {
+		minFilter: THREE.LinearFilter,
+		magFilter: THREE.LinearFilter,
+	}), []);
+
+	// Brushes: 4 "Ribbon Brushes" that follow the 4 wheel histories in the trackScene
+	const brushMaterials = useMemo(() => {
+		return trackers.map(tracker => tracker.createTrailMaterial());
+	}, [trackers]);
+
+	useEffect(() => {
+		// Add 4 ribbons to the trackScene for the GPU to "see"
+		trackers.forEach((tracker, i) => {
+			const geo = new THREE.PlaneGeometry(1, 1, 128, 1);
+			geo.translate(0.5, 0, 0);
+			const mat = brushMaterials[i];
+			// Make them pure white for the mask
+			mat.color.set(0xffffff);
+			mat.opacity = 1.0;
+			const mesh = new THREE.Mesh(geo, mat);
+			mesh.frustumCulled = false;
+			trackScene.add(mesh);
+		});
+	}, [trackScene, trackers, brushMaterials]);
+
 	const frameRef = useRef(0);
 
 	const [config, setConfig] = useState(() => ({ ...GRASS_CONFIG }));
@@ -57,22 +97,10 @@ export function InfiniteGrass({ fieldSize = 90, chasisBodyRef }: InfiniteGrassPr
 	}, []);
 
 	const count = config.clusterCount * config.bladesPerCluster;
-
-	// ── History DataTexture ───────────────────────────────────────────────────
-	// 128×1 RGBA32F texture. Each texel = one wheel stamp { worldX, worldZ, 0, active }.
-	// Uploaded to GPU once per frame — replaces the per-blade CPU loop entirely.
-	const historyTexture = useMemo(() => {
-		const tex = new THREE.DataTexture(
-			historyDataRef.current,
-			HISTORY_SIZE,
-			1,
-			THREE.RGBAFormat,
-			THREE.FloatType
-		);
-		tex.needsUpdate = true;
-		historyTextureRef.current = tex;
-		return tex;
-	}, []);
+	
+	// For the grass flattening shader, we'll use the first tracker for now
+	// We will combine them once we move to the GPU FBO system.
+	const historyTexture = trackers[0].texture;
 
 	// ── Uniforms ──────────────────────────────────────────────────────────────
 	const uniforms = useMemo(
@@ -248,34 +276,93 @@ export function InfiniteGrass({ fieldSize = 90, chasisBodyRef }: InfiniteGrassPr
 		_tmpWheel.crossVectors(state.camera.up, _tmpWheel).normalize();
 		uniforms.cameraRight.value.copy(_tmpWheel);
 
-		if (!chasisBodyRef?.current || !historyTextureRef.current) return;
+		if (!chasisBodyRef?.current) return;
 
 		const body = chasisBodyRef.current;
 		const translation = body.translation();
 		const rotation = body.rotation();
 		_tmpQuat.set(rotation.x, rotation.y, rotation.z, rotation.w);
 
-		// Write 4 wheel positions into the ring buffer texture
-		for (const offset of _wheelOffsets) {
+		// Update trackers (CPU history)
+		_wheelOffsets.forEach((offset, i) => {
 			_tmpWheel.copy(offset).applyQuaternion(_tmpQuat);
-			const writeIndex = historyCursorRef.current % HISTORY_SIZE;
-			const base = writeIndex * 4;
-			historyDataRef.current[base + 0] = translation.x + _tmpWheel.x; // worldX
-			historyDataRef.current[base + 1] = translation.z + _tmpWheel.z; // worldZ
-			historyDataRef.current[base + 2] = 0;
-			historyDataRef.current[base + 3] = 1; // active
-			historyCursorRef.current += 1;
+			const worldX = translation.x + _tmpWheel.x;
+			const worldZ = translation.z + _tmpWheel.z;
+			const worldY = translation.y + _tmpWheel.y;
+			trackers[i].update(worldX, worldY, worldZ, true);
+		});
+
+		// ── Render Full History to FBO ──────────────────────────────────────────
+		const gl = state.gl;
+		const currentRenderTarget = gl.getRenderTarget();
+		
+		// Synchronize the Track Camera with the car
+		trackCamera.position.set(state.camera.position.x, 10, state.camera.position.z);
+		trackCamera.lookAt(state.camera.position.x, 0, state.camera.position.z);
+
+		// Clear target with black
+		gl.setRenderTarget(renderTarget);
+		gl.clear(); 
+		
+		// Render all 4 history ribbons into the target
+		gl.render(trackScene, trackCamera);
+		
+		// Reset to main screen
+		gl.setRenderTarget(currentRenderTarget);
+
+		// Update uniforms for the grass flattening (using the GPU track map!)
+		uniforms.historyTex.value = renderTarget.texture;
+		uniforms.historySamples.value = trackers[0].activeSamples;
+
+		// Debug log every 60 frames
+		if (state.clock.elapsedTime * 60 % 60 < 1) {
+			trackers[0].debugLog();
 		}
-
-		// Update the uniform so the shader knows how many texels to sample
-		const activeSamples = Math.min(HISTORY_SIZE, historyCursorRef.current);
-		uniforms.historySamples.value = activeSamples;
-
-		// Upload the tiny 128×1 texture — this is the only GPU upload now
-		historyTextureRef.current.needsUpdate = true;
 
 		// No more frameRef throttle needed — GPU handles it every frame for free
 	});
 
-	return <mesh geometry={grassData.geometry} material={grassMaterial} frustumCulled={false} />;
+	return (
+		<>
+			<mesh geometry={grassData.geometry} material={grassMaterial} frustumCulled={false} />
+			{trackers.map((tracker, i) => (
+				<WheelTrail key={i} tracker={tracker} />
+			))}
+			
+			{/* Debug HUD: Shows the RenderTarget texture in the corner */}
+			<DebugHUD texture={renderTarget.texture} />
+		</>
+	);
 }
+
+/**
+ * Small HUD element to visualize what the GPU is seeing in the RenderTarget.
+ */
+function DebugHUD({ texture }: { texture: THREE.Texture }) {
+	return (
+		<mesh position={[10, 10, -20]} rotation={[0, 0, 0]}>
+			<planeGeometry args={[5, 5]} />
+			<meshBasicMaterial map={texture} />
+		</mesh>
+	);
+}
+
+/**
+ * Visual debug component that creates a ribbon trail using 
+ * the exact geometry and TSL logic from the sample.
+ */
+function WheelTrail({ tracker }: { tracker: WheelTracker }) {
+	const geometry = useMemo(() => {
+		// Plane width 1, height 1, with 128 segments along width
+		const geo = new THREE.PlaneGeometry(1, 1, 128, 1);
+		// Translate by 0.5 on X so the left edge is at the origin
+		geo.translate(0.5, 0, 0);
+		return geo;
+	}, []);
+
+	// Use the material logic we moved to the WheelTracker class
+	const material = useMemo(() => tracker.createTrailMaterial(), [tracker]);
+
+	return <mesh geometry={geometry} material={material} frustumCulled={false} />;
+}
+
