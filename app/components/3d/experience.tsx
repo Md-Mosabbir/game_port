@@ -1,6 +1,6 @@
 "use client"
-import { KeyboardControls, OrbitControls } from '@react-three/drei';
-import { Canvas } from '@react-three/fiber';
+import { KeyboardControls, OrbitControls, Stats, Html } from '@react-three/drei';
+import { Canvas, useFrame } from '@react-three/fiber';
 import { Physics, RapierRigidBody } from '@react-three/rapier';
 import * as THREE from 'three';
 
@@ -15,7 +15,7 @@ import { GRASS_CONFIG } from '@/app/controls/grassControls';
 import { ENV_CONFIG, subscribeToEnvConfig } from '@/app/controls/environmentControls';
 import { WebGPURenderer } from 'three/webgpu';
 import { Vehicle } from './environment/vehicle';
-import { LeafSystem } from './plane';
+
 const spawn = {
 	position: [0, 10, 0] as THREE.Vector3Tuple,
 	rotation: [0, 0, 0] as THREE.Vector3Tuple,
@@ -40,6 +40,23 @@ const initialControls: ControlState = {
 	left: false, right: false,
 	brake: false, reset: false
 }
+
+
+function OriginMarker() {
+	return (
+		<group position={[0, 0, 0]}>
+			<mesh position={[0, 25, 0]}>
+				<cylinderGeometry args={[0.1, 0.1, 50, 32]} />
+				<meshStandardMaterial color="#ff00ff" emissive="#ff00ff" emissiveIntensity={2} />
+			</mesh>
+			<mesh rotation={[Math.PI / 2, 0, 0]}>
+				<ringGeometry args={[5, 6, 64]} />
+				<meshBasicMaterial color="#ff00ff" side={THREE.DoubleSide} />
+			</mesh>
+		</group>
+	);
+}
+
 export function Sketch() {
 	const [mobileControls, setMobileControls] = useReducer(
 		(_: ControlState, next: ControlState) => next,
@@ -69,7 +86,11 @@ export function Sketch() {
 					}
 				}
 			>
+
 				<Sky />
+				<OriginMarker />
+				<Stats />
+	
 				<Physics debug={envConfig.physicsDebug} >
 					<KeyboardControls map={controls}>
 						<Vehicle position={spawn.position} rotation={spawn.rotation} chasisBodyRef={chasisBodyRef} mobileControls={mobileControls} />
@@ -83,6 +104,7 @@ export function Sketch() {
 					chasisBodyRef={chasisBodyRef}
 					fieldSize={90}
 				/>
+		
 			</Canvas>
 
 			<MobileControls onChange={setMobileControls} />
