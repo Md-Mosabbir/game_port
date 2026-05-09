@@ -6,18 +6,18 @@ import * as THREE from 'three';
 
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { MobileControls } from '../MobileControls';
-import { InfiniteGrass } from './environment/grass';
+import { InfiniteGrass } from './environment/grass/grass';
 import { Sky } from './environment/sky';
 import { WorldGround } from './environment/world-ground';
 import { WorldLighting } from './environment/world-lighting';
 import { initializeWorldControls } from '@/app/controls';
-import { GRASS_CONFIG } from '@/app/controls/grassControls';
+
 import { ENV_CONFIG, subscribeToEnvConfig } from '@/app/controls/environmentControls';
 import { WebGPURenderer } from 'three/webgpu';
 import { Vehicle } from './environment/vehicle';
 
 const spawn = {
-	position: [0, 10, 0] as THREE.Vector3Tuple,
+	position: [0, 1.5, 0] as THREE.Vector3Tuple,
 	rotation: [0, 0, 0] as THREE.Vector3Tuple,
 };
 
@@ -102,7 +102,6 @@ export function Sketch() {
 				{envConfig.orbitControls && <OrbitControls makeDefault />}
 				<InfiniteGrass
 					chasisBodyRef={chasisBodyRef}
-					fieldSize={90}
 				/>
 		
 			</Canvas>
