@@ -1,12 +1,15 @@
 import * as THREE from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import {
+	abs,
 	attribute,
+	cos,
 	float,
 	mix,
 	mod,
 	positionLocal,
 	sin,
+	step,
 	texture,
 	time,
 	vec2,
@@ -44,22 +47,11 @@ export function createGrassMaterial(
 
 	// ── Sanity check ────────────────────────────────────────────────────────
 	if (!trackTexture || !trackTexture.isTexture) {
-		console.error(
-			'%c[GrassMaterial]%c trackTexture is not a valid THREE.Texture!',
-			'background:#f00;color:#fff;padding:2px 5px;',
-			'color:red;',
-			trackTexture
-		);
+		
 		throw new Error('createGrassMaterial: trackTexture must be a valid THREE.Texture');
 	}
 
-	console.log(
-		'%c[GrassMaterial]%c Creating material with trackTexture uuid:',
-		'background:#222;color:#0f0;padding:2px 5px;',
-		'color:#0f0;',
-		trackTexture.uuid
-	);
-
+	
 	const material = new MeshBasicNodeMaterial({ side: THREE.DoubleSide });
 
 	// ── Vertex Attributes ──────────────────────────────────────────────────
@@ -104,35 +96,68 @@ export function createGrassMaterial(
 	//   V = (worldZ - cameraZ) / fieldSize + 0.5
 	//
 	// Both should be in [0,1] for blades within the camera's view.
-const trackU = bladeWorldPos.x
-    .sub(uniforms.cameraXZ.x)
-    .div(uniforms.fieldSize)
-    .add(0.5);
 
-const trackV = bladeWorldPos.z
-    .sub(uniforms.cameraXZ.y)
-    .div(uniforms.fieldSize)
-    .add(0.5);
+	const trueWorldPos = vec3(
+  aClusterCenter.x.add(aBladeOffset.x),
+  0,
+  aClusterCenter.z.add(aBladeOffset.z)
+);
+	
+// const trackU = trueWorldPos.x
+//   .sub(uniforms.cameraXZ.x)
+//   .div(uniforms.fieldSize)
+//   .mul(-1)
+//   .add(0.5);
 
-const trackUV = vec2(trackU, trackV);
+// const trackV = trueWorldPos.z
+//   .sub(uniforms.cameraXZ.y)
+//   .div(uniforms.fieldSize)
+//   .mul(-1)
+//   .add(0.5);
+
+  const trackU = wrappedCenterX.add(aBladeOffset.x)
+  .sub(uniforms.cameraXZ.x)
+  .div(uniforms.fieldSize)
+  .add(0.5);  // no mul(-1) — with up=(0,0,1) the axes already match
+
+const trackV = wrappedCenterZ.add(aBladeOffset.z)
+  .sub(uniforms.cameraXZ.y)
+  .div(uniforms.fieldSize)
+  .add(0.5);
+
+const trackUV = vec2(float(1.0).sub(trackU), float(1.0).sub(trackV));
 
 	// ── FBO Texture Lookup ─────────────────────────────────────────────────
 	// Sample the ping-pong track texture.
 	// R channel = flatten intensity (0=upright, 1=fully flat).
-	// The texture node is returned so the caller can swap .value each frame.
-	const trackTexNode = texture(trackTexture, trackUV);
+	const trackTexNode = texture(trackTexture, trackUV).clamp(0, 1);
 
-	console.log(
-		'%c[GrassMaterial]%c trackTexNode created:',
-		'background:#222;color:#0f0;padding:2px 5px;',
-		'color:#0f0;',
-		trackTexNode
-	);
 
-	const flattenStrength = trackTexNode.r;
+
+const flattenStrength = trackTexNode.r; // amplify signal
 
 	// flattenScale: 1 = fully upright, 0 = fully flat
-	const flattenScale = float(1.0).sub(flattenStrength).clamp(0, 1);
+	const flattenScale = float(1.0).sub(flattenStrength.smoothstep(0.01, 0.2)); 
+
+
+	const relX = bladeWorldPos.x.sub(uniforms.carPosition.x);
+	const relZ = bladeWorldPos.z.sub(uniforms.carPosition.z);
+
+	const cosYaw = cos(uniforms.carYaw);
+	const sinYaw = sin(uniforms.carYaw);
+
+	const localX = cosYaw.mul(relX).add(sinYaw.mul(relZ));
+	const localZ = sinYaw.negate().mul(relX).add(cosYaw.mul(relZ));
+
+	const insideCar = float(1.0).sub(
+		step(uniforms.carHalfX, abs(localX))
+	).mul(
+		float(1.0).sub(step(uniforms.carHalfZ, abs(localZ)))
+	);
+
+	const finalFlattenScale = flattenScale.mul(float(1.0).sub(insideCar));
+
+  //const flattenScale = float(1.0).sub(flattenStrength);
 
 	// ── Wind ───────────────────────────────────────────────────────────────
 	const windWave = sin(
@@ -146,7 +171,7 @@ const trackUV = vec2(trackU, trackV);
 	const windBend = windWave
 		.mul(uniforms.windStrength)
 		.mul(aTipness)
-		.mul(flattenScale);
+		.mul(finalFlattenScale);
 
 	// ── Final Position ─────────────────────────────────────────────────────
 	// 1. Start at blade world position
@@ -154,7 +179,7 @@ const trackUV = vec2(trackU, trackV);
 	// 3. Flatten: crush height by flattenScale
 	// 4. Wind: bend the tip
 	const billboardOffset = uniforms.cameraRight.mul(positionLocal.x);
-	const flattenedHeight = positionLocal.y.mul(flattenScale);
+	const flattenedHeight = positionLocal.y.mul(finalFlattenScale);
 
 	material.positionNode = bladeWorldPos
 		.add(billboardOffset)
@@ -163,20 +188,22 @@ const trackUV = vec2(trackU, trackV);
 	// ── Color ──────────────────────────────────────────────────────────────
 	material.colorNode = mix(uniforms.colorBase, uniforms.colorTip, aTipness);
 	
-// replace colorNode with:
 
 
 	// ── DEBUG MODE ─────────────────────────────────────────────────────────
 	// Uncomment ONE of these lines to debug visually:
 	//
 	// Show UV coordinates as color (should be a smooth gradient, green at center)
-	// material.colorNode = vec3(trackU, trackV, float(0));
+	//material.colorNode = vec3(trackU, trackV, float(0));
 	//
 	// Show raw flatten strength as brightness (white = flattened, black = upright)
-	// material.colorNode = vec3(flattenStrength, flattenStrength, flattenStrength);
+	 //material.colorNode = vec3(flattenStrength, flattenStrength, flattenStrength);
 	//
 	// Show flattenScale (inverted — white = upright, black = flattened)
-	// material.colorNode = vec3(flattenScale, flattenScale, flattenScale);
+	//material.colorNode = vec3(flattenScale, flattenScale, flattenScale);
+	
+	// Show amplified track influence (Neon Red = flattened area)
+	//material.colorNode = mix(mix(uniforms.colorBase, uniforms.colorTip, aTipness), vec3(1, 0, 0), flattenStrength.mul(10.0).clamp(0, 1));
 
 	
 	return { material, trackTexNode };

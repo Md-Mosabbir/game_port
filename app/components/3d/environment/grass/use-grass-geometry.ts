@@ -35,7 +35,7 @@ export function useGrassGeometry(count: number, config: any) {
             let absoluteZ = THREE.MathUtils.clamp(centerZ + Math.sin(angle) * radius, -GRASS_SETTINGS.FIELD_SIZE/2, GRASS_SETTINGS.FIELD_SIZE/2);
 
             const width = 0.05 + r2 * 0.08;
-            const height = 0.8 + r3 * 0.9;
+            const height = config.bladeHeight + r3 * config.bladeHeightVariance;
 
             // Triangle Vertices
             positions[i9 + 0] = -width; positions[i9 + 1] = 0;      positions[i9 + 2] = 0;
@@ -60,5 +60,5 @@ export function useGrassGeometry(count: number, config: any) {
         geo.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
 
         return geo;
-    }, [count, config.clusterCount, config.clusterSpread]);
+    }, [count, config.clusterCount, config.clusterSpread, config.bladeHeight, config.bladeHeightVariance]);
 }

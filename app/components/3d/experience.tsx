@@ -43,19 +43,34 @@ const initialControls: ControlState = {
 
 
 function OriginMarker() {
-	return (
-		<group position={[0, 0, 0]}>
-			<mesh position={[0, 25, 0]}>
-				<cylinderGeometry args={[0.1, 0.1, 50, 32]} />
-				<meshStandardMaterial color="#ff00ff" emissive="#ff00ff" emissiveIntensity={2} />
-			</mesh>
-			<mesh rotation={[Math.PI / 2, 0, 0]}>
-				<ringGeometry args={[5, 6, 64]} />
-				<meshBasicMaterial color="#ff00ff" side={THREE.DoubleSide} />
-			</mesh>
-		</group>
-	);
+    return (
+        <group position={[0, 0, 0]}>
+            {/* The Vertical Magenta Pillar you already had */}
+            <mesh position={[0, 25, 0]}>
+                <cylinderGeometry args={[0.1, 0.1, 50, 32]} />
+                <meshStandardMaterial color="#ff00ff" emissive="#ff00ff" emissiveIntensity={2} />
+            </mesh>
+
+            {/* THICK AXIS BEAMS */}
+            {/* X - Red */}
+            <mesh rotation={[0, 0, Math.PI / 2]} position={[250, 0, 0]}>
+                <cylinderGeometry args={[0.05, 0.05, 500]} />
+                <meshBasicMaterial color="red" />
+            </mesh>
+            {/* Z - Blue */}
+            <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 250]}>
+                <cylinderGeometry args={[0.05, 0.05, 500]} />
+                <meshBasicMaterial color="blue" />
+            </mesh>
+
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
+                <ringGeometry args={[5, 6, 64]} />
+                <meshBasicMaterial color="#ff00ff" side={THREE.DoubleSide} />
+            </mesh>
+        </group>
+    );
 }
+
 
 export function Sketch() {
 	const [mobileControls, setMobileControls] = useReducer(
@@ -100,6 +115,8 @@ export function Sketch() {
 				</Physics>
 				<WorldLighting />
 				{envConfig.orbitControls && <OrbitControls makeDefault />}
+				{envConfig.orbitControls && <gridHelper args={[100, 100, "#ff0000", "#00ff00"]} position={[0,0,0]} />}
+	
 				<InfiniteGrass
 					chasisBodyRef={chasisBodyRef}
 				/>
