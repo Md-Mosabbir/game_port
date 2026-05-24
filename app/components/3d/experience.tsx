@@ -15,6 +15,7 @@ import { initializeWorldControls } from '@/app/controls';
 import { ENV_CONFIG, subscribeToEnvConfig } from '@/app/controls/environmentControls';
 import { WebGPURenderer } from 'three/webgpu';
 import { Vehicle } from './environment/vehicle';
+import { ObstacleManager } from './environment/collision/obstacle';
 
 const spawn = {
 	position: [0, 1.5, 0] as THREE.Vector3Tuple,
@@ -111,7 +112,7 @@ export function Sketch() {
 						<Vehicle position={spawn.position} rotation={spawn.rotation} chasisBodyRef={chasisBodyRef} mobileControls={mobileControls} />
 					</KeyboardControls>
 					<WorldGround />
-		
+					<ObstacleManager carBodyRef={chasisBodyRef} />
 				</Physics>
 				<WorldLighting />
 				{envConfig.orbitControls && <OrbitControls makeDefault />}
