@@ -1,5 +1,6 @@
 // components/MobileControls.tsx
 import { useReducer, useCallback, useEffect } from 'react'
+import { Joystick } from 'react-joystick-component'
 
 type ControlState = {
   forward: boolean
@@ -8,11 +9,15 @@ type ControlState = {
   right: boolean
   brake: boolean
   reset: boolean
+  axisX: number
+  axisY: number
 }
 
 type ControlAction =
   | { type: 'PRESS'; key: keyof ControlState }
   | { type: 'RELEASE'; key: keyof ControlState }
+  | { type: 'JOYSTICK_MOVE'; x: number; y: number }
+  | { type: 'JOYSTICK_STOP' }
 
 const initialState: ControlState = {
   forward: false,
@@ -21,12 +26,16 @@ const initialState: ControlState = {
   right: false,
   brake: false,
   reset: false,
+  axisX: 0,
+  axisY: 0
 }
 
 function controlReducer(state: ControlState, action: ControlAction): ControlState {
   switch (action.type) {
     case 'PRESS': return { ...state, [action.key]: true }
     case 'RELEASE': return { ...state, [action.key]: false }
+    case 'JOYSTICK_MOVE': return { ...state, axisX: action.x, axisY: action.y }
+    case 'JOYSTICK_STOP': return { ...state, axisX: 0, axisY: 0 }
     default: return state
   }
 }
@@ -44,6 +53,32 @@ export const MobileControls = ({ onChange }: Props) => {
 
   const release = useCallback((key: keyof ControlState) => {
     dispatch({ type: 'RELEASE', key })
+  }, [])
+
+  const handleJoystickMove = useCallback((e: any) => {
+    // Determine if x/y are in pixels (e.g. up to 60) or normalized (up to 1)
+    let nx = e.x || 0;
+    let ny = e.y || 0;
+    if (Math.abs(nx) > 1.5 || Math.abs(ny) > 1.5) {
+      nx = nx / 60;
+      ny = ny / 60;
+    }
+    
+    // Guarantee correct axis sign based on library's direction string
+    if (e.direction === 'FORWARD') ny = Math.abs(ny);
+    if (e.direction === 'BACKWARD') ny = -Math.abs(ny);
+    if (e.direction === 'LEFT') nx = -Math.abs(nx); // Left is negative stick, but wait!
+    if (e.direction === 'RIGHT') nx = Math.abs(nx);
+
+    // ensure within [-1, 1]
+    nx = Math.max(-1, Math.min(1, nx));
+    ny = Math.max(-1, Math.min(1, ny));
+    
+    dispatch({ type: 'JOYSTICK_MOVE', x: nx, y: ny })
+  }, [])
+
+  const handleJoystickStop = useCallback(() => {
+    dispatch({ type: 'JOYSTICK_STOP' })
   }, [])
 
   // Keep parent in sync from the source of truth (reducer state).
@@ -108,28 +143,16 @@ export const MobileControls = ({ onChange }: Props) => {
       WebkitUserSelect: 'none',
       WebkitTouchCallout: 'none',
     }}>
-      {/* Left side — steering */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '64px 64px 64px',
-        gridTemplateRows: '64px 64px',
-        gap: 8,
-        pointerEvents: 'all',
-      }}>
-        <div />
-        <div style={{ gridColumn: 2, gridRow: 1 }}>
-          {btn('forward', '↑')}
-        </div>
-        <div />
-        <div style={{ gridColumn: 1, gridRow: 2 }}>
-          {btn('left', '←')}
-        </div>
-        <div style={{ gridColumn: 2, gridRow: 2 }}>
-          {btn('back', '↓')}
-        </div>
-        <div style={{ gridColumn: 3, gridRow: 2 }}>
-          {btn('right', '→')}
-        </div>
+      {/* Left side — analog joystick */}
+      <div style={{ pointerEvents: 'all', paddingBottom: 16, touchAction: 'none' }}>
+        <Joystick 
+          size={120} 
+          sticky={false} 
+          baseColor="rgba(0,0,0,0.35)" 
+          stickColor="rgba(255,255,255,0.6)" 
+          move={handleJoystickMove} 
+          stop={handleJoystickStop} 
+        />
       </div>
 
       {/* Right side — brake + reset */}

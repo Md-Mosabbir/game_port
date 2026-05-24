@@ -34,12 +34,14 @@ type ControlState = {
 	forward: boolean; back: boolean
 	left: boolean; right: boolean
 	brake: boolean; reset: boolean
+	axisX: number; axisY: number
 }
 
 const initialControls: ControlState = {
 	forward: false, back: false,
 	left: false, right: false,
-	brake: false, reset: false
+	brake: false, reset: false,
+	axisX: 0, axisY: 0
 }
 
 

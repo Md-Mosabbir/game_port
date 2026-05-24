@@ -29,6 +29,8 @@ type MobileControlState = {
 	right: boolean
 	brake: boolean
 	reset: boolean
+	axisX: number
+	axisY: number
 }
 
 const _bodyPosition = new THREE.Vector3();
@@ -95,7 +97,10 @@ export const Vehicle = ({ position, rotation, chasisBodyRef, mobileControls }: V
 			brake: controls.brake || mobileControls.brake,
 			reset: controls.reset || mobileControls.reset,
 		}
-		const engineForce = (Number(merged.forward) - Number(merged.back)) * config.accelerateForce;
+		const keyboardEngine = Number(merged.forward) - Number(merged.back);
+		const joystickEngine = mobileControls.axisY || 0;
+		const totalEngine = Math.max(-1, Math.min(1, keyboardEngine + joystickEngine));
+		const engineForce = totalEngine * config.accelerateForce;
 		controller.setWheelEngineForce(0, engineForce);
 		controller.setWheelEngineForce(1, engineForce);
 
@@ -103,7 +108,9 @@ export const Vehicle = ({ position, rotation, chasisBodyRef, mobileControls }: V
 		[0, 1, 2, 3].forEach((i) => controller.setWheelBrake(i, wheelBrake));
 
 		const currentSteering = controller.wheelSteering(0) || 0;
-		const steerDirection = Number(merged.left) - Number(merged.right);
+		const keyboardSteer = Number(merged.left) - Number(merged.right);
+		const joystickSteer = -(mobileControls.axisX || 0); // Negative because Left is +1
+		const steerDirection = Math.max(-1, Math.min(1, keyboardSteer + joystickSteer));
 		const steering = THREE.MathUtils.lerp(currentSteering, config.steerAngle * steerDirection, 0.1);
 		controller.setWheelSteering(0, steering);
 		controller.setWheelSteering(1, steering);
