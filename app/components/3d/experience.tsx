@@ -7,12 +7,15 @@ import * as THREE from 'three';
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { MobileControls } from '../MobileControls';
 import { InfiniteGrass } from './environment/grass/grass';
+import { Trees } from './environment/trees/trees';
+import { Bushes } from './environment/bush/bushes';
 import { Sky } from './environment/sky';
 import { WorldGround } from './environment/world-ground';
 import { WorldLighting } from './environment/world-lighting';
 import { initializeWorldControls } from '@/app/controls';
-
 import { ENV_CONFIG, subscribeToEnvConfig } from '@/app/controls/environmentControls';
+import { FOLIAGE_CONFIG, subscribeToFoliageConfig } from '@/app/controls/foliageControls';
+import { GRASS_SETTINGS } from './environment/grass/grass-config';
 import { WebGPURenderer } from 'three/webgpu';
 import { Vehicle } from './environment/vehicle';
 import { ObstacleManager } from './environment/collision/obstacle';
@@ -88,6 +91,13 @@ export function Sketch() {
 		});
 	}, []);
 
+	const [foliageConfig, setFoliageConfig] = useState(() => ({ ...FOLIAGE_CONFIG }));
+	useEffect(() => {
+		return subscribeToFoliageConfig(() => {
+			setFoliageConfig({ ...FOLIAGE_CONFIG });
+		});
+	}, []);
+
 	const chasisBodyRef = useRef<RapierRigidBody>(null!)
 	useEffect(() => {
 		initializeWorldControls();
@@ -113,7 +123,7 @@ export function Sketch() {
 					<KeyboardControls map={controls}>
 						<Vehicle position={spawn.position} rotation={spawn.rotation} chasisBodyRef={chasisBodyRef} mobileControls={mobileControls} />
 					</KeyboardControls>
-					<WorldGround />
+					<WorldGround chasisBodyRef={chasisBodyRef} />
 					<ObstacleManager carBodyRef={chasisBodyRef} />
 				</Physics>
 				<WorldLighting />
@@ -122,6 +132,23 @@ export function Sketch() {
 	
 				<InfiniteGrass
 					chasisBodyRef={chasisBodyRef}
+				/>
+
+				<Bushes 
+					count={foliageConfig.bushCount} 
+					planeCount={foliageConfig.bushPlaneCount} 
+					config={foliageConfig}                  
+					chasisBodyRef={chasisBodyRef}
+					fieldSize={GRASS_SETTINGS.FIELD_SIZE}
+				/>
+			
+			
+				<Trees 
+					count={foliageConfig.treeCount} 
+					planeCount={foliageConfig.treePlaneCount} 
+					config={foliageConfig}
+					chasisBodyRef={chasisBodyRef}
+					fieldSize={GRASS_SETTINGS.FIELD_SIZE}
 				/>
 		
 			</Canvas>

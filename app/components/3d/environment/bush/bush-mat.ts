@@ -1,0 +1,173 @@
+import * as THREE from 'three';
+import { MeshBasicNodeMaterial } from 'three/webgpu';
+
+import {
+    attribute,
+    mix,
+    mod,
+    positionLocal,
+    sin,
+    smoothstep,
+    time,
+    uniform,
+    uv,
+    vec3
+} from 'three/tsl';
+
+import { texture } from 'three/tsl';
+
+export function createBushMaterial(
+    uniforms: {
+        cameraXZ: any;
+        fieldSize: any;
+    },
+    noiseTex: THREE.Texture,
+    alphaTex: THREE.Texture,
+): { material: MeshBasicNodeMaterial } {
+
+    // ─────────────────────────────────────────────
+    // MATERIAL
+    // ─────────────────────────────────────────────
+
+    const material = new MeshBasicNodeMaterial({
+        side: THREE.DoubleSide,
+    });
+
+    material.transparent = true;
+
+    material.depthWrite = false;
+
+    // ─────────────────────────────────────────────
+    // WIND UNIFORMS
+    // ─────────────────────────────────────────────
+
+    const uSpeed = uniform(0.8);
+
+    const uIntensity = uniform(0.08);
+
+    material.userData.uSpeed = uSpeed;
+
+    material.userData.uIntensity = uIntensity;
+
+    // ─────────────────────────────────────────────
+    // INFINITE WRAP
+    // ─────────────────────────────────────────────
+
+    const aSpawnXZ = attribute(
+        'aSpawnXZ',
+        'vec2'
+    );
+
+    const halfField = uniforms.fieldSize.mul(0.5);
+
+    const wrappedX = mod(
+        aSpawnXZ.x
+            .sub(uniforms.cameraXZ.x)
+            .add(halfField),
+
+        uniforms.fieldSize
+    )
+        .sub(halfField)
+        .add(uniforms.cameraXZ.x);
+
+    const wrappedZ = mod(
+        aSpawnXZ.y
+            .sub(uniforms.cameraXZ.y)
+            .add(halfField),
+
+        uniforms.fieldSize
+    )
+        .sub(halfField)
+        .add(uniforms.cameraXZ.y);
+
+    // ─────────────────────────────────────────────
+    // WIND
+    // ─────────────────────────────────────────────
+
+    const heightMask = smoothstep(
+        0.0,
+        1.0,
+        positionLocal.y
+    );
+
+    const windWave = sin(
+        time.mul(uSpeed)
+            .add(wrappedX.mul(1.7))
+            .add(wrappedZ.mul(1.2))
+    );
+
+    const secondaryWave = sin(
+        time.mul(uSpeed.mul(0.6))
+            .add(wrappedZ.mul(2.4))
+    );
+
+    const combinedWind = windWave.add(
+        secondaryWave.mul(0.5)
+    );
+
+    const windBend = combinedWind
+        .mul(uIntensity)
+        .mul(heightMask);
+
+    const swayX = windBend;
+
+    const swayZ = windBend.mul(0.35);
+
+    // ─────────────────────────────────────────────
+    // POSITION
+    // ─────────────────────────────────────────────
+
+    material.positionNode = vec3(
+        positionLocal.x
+            .add(swayX)
+            .add(wrappedX),
+
+        positionLocal.y,
+
+        positionLocal.z
+            .add(swayZ)
+            .add(wrappedZ)
+    );
+
+    // ─────────────────────────────────────────────
+    // TEXTURES
+    // ─────────────────────────────────────────────
+
+    const noiseSample = texture(
+        noiseTex,
+        uv()
+    );
+
+    const alphaSample = texture(
+        alphaTex,
+        uv()
+    );
+
+    // ─────────────────────────────────────────────
+    // ALPHA CUTOUT
+    // ─────────────────────────────────────────────
+
+    material.opacityNode = alphaSample.r
+        .smoothstep(0.45, 0.55);
+
+    // ─────────────────────────────────────────────
+    // COLOR
+    // ─────────────────────────────────────────────
+
+    const heightGradient = smoothstep(
+        -0.2,
+        0.8,
+        positionLocal.y
+    );
+
+    material.colorNode = mix(
+        vec3(0.10, 0.24, 0.06),
+        vec3(0.32, 0.58, 0.18),
+
+        heightGradient.add(
+            noiseSample.r.mul(0.25)
+        )
+    );
+
+    return { material };
+}
