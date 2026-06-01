@@ -25,70 +25,49 @@ export function createBushMaterial(
     alphaTex: THREE.Texture,
 ): { material: MeshBasicNodeMaterial } {
 
-    // ─────────────────────────────────────────────
-    // MATERIAL
-    // ─────────────────────────────────────────────
-
     const material = new MeshBasicNodeMaterial({
         side: THREE.DoubleSide,
     });
 
     material.transparent = true;
 
-    material.depthWrite = false;
-
-    // ─────────────────────────────────────────────
+    // ─────────────────────────────
     // WIND UNIFORMS
-    // ─────────────────────────────────────────────
+    // ─────────────────────────────
 
     const uSpeed = uniform(0.8);
-
     const uIntensity = uniform(0.08);
 
     material.userData.uSpeed = uSpeed;
-
     material.userData.uIntensity = uIntensity;
 
-    // ─────────────────────────────────────────────
+    // ─────────────────────────────
     // INFINITE WRAP
-    // ─────────────────────────────────────────────
+    // ─────────────────────────────
 
-    const aSpawnXZ = attribute(
-        'aSpawnXZ',
-        'vec2'
-    );
+    const aSpawnXZ = attribute('aSpawnXZ', 'vec2');
 
     const halfField = uniforms.fieldSize.mul(0.5);
 
     const wrappedX = mod(
-        aSpawnXZ.x
-            .sub(uniforms.cameraXZ.x)
-            .add(halfField),
-
+        aSpawnXZ.x.sub(uniforms.cameraXZ.x).add(halfField),
         uniforms.fieldSize
     )
         .sub(halfField)
         .add(uniforms.cameraXZ.x);
 
     const wrappedZ = mod(
-        aSpawnXZ.y
-            .sub(uniforms.cameraXZ.y)
-            .add(halfField),
-
+        aSpawnXZ.y.sub(uniforms.cameraXZ.y).add(halfField),
         uniforms.fieldSize
     )
         .sub(halfField)
         .add(uniforms.cameraXZ.y);
 
-    // ─────────────────────────────────────────────
+    // ─────────────────────────────
     // WIND
-    // ─────────────────────────────────────────────
+    // ─────────────────────────────
 
-    const heightMask = smoothstep(
-        0.0,
-        1.0,
-        positionLocal.y
-    );
+    const heightMask = smoothstep(0.0, 1.0, positionLocal.y);
 
     const windWave = sin(
         time.mul(uSpeed)
@@ -101,73 +80,71 @@ export function createBushMaterial(
             .add(wrappedZ.mul(2.4))
     );
 
-    const combinedWind = windWave.add(
-        secondaryWave.mul(0.5)
-    );
+    const combinedWind = windWave.add(secondaryWave.mul(0.5));
 
-    const windBend = combinedWind
-        .mul(uIntensity)
-        .mul(heightMask);
+    const windBend = combinedWind.mul(uIntensity).mul(heightMask);
 
     const swayX = windBend;
-
     const swayZ = windBend.mul(0.35);
 
-    // ─────────────────────────────────────────────
+    // ─────────────────────────────
     // POSITION
-    // ─────────────────────────────────────────────
+    // ─────────────────────────────
 
     material.positionNode = vec3(
-        positionLocal.x
-            .add(swayX)
-            .add(wrappedX),
-
+        positionLocal.x.add(swayX).add(wrappedX),
         positionLocal.y,
-
-        positionLocal.z
-            .add(swayZ)
-            .add(wrappedZ)
+        positionLocal.z.add(swayZ).add(wrappedZ)
     );
 
-    // ─────────────────────────────────────────────
+    // ─────────────────────────────
     // TEXTURES
-    // ─────────────────────────────────────────────
+    // ─────────────────────────────
 
-    const noiseSample = texture(
-        noiseTex,
-        uv()
-    );
+    const noiseSample = texture(noiseTex, uv());
+    const alphaSample = texture(alphaTex, uv());
 
-    const alphaSample = texture(
-        alphaTex,
-        uv()
-    );
+    // ─────────────────────────────
+    // ALPHA
+    // ─────────────────────────────
 
-    // ─────────────────────────────────────────────
-    // ALPHA CUTOUT
-    // ─────────────────────────────────────────────
+    material.opacityNode = alphaSample.r.smoothstep(0.45, 0.55);
 
-    material.opacityNode = alphaSample.r
-        .smoothstep(0.45, 0.55);
 
-    // ─────────────────────────────────────────────
-    // COLOR
-    // ─────────────────────────────────────────────
+    // ─────────────────────────────
+    // 🌿 GHIBLI DARK FOREST PALETTE
+    // ─────────────────────────────
 
-    const heightGradient = smoothstep(
-        -0.2,
-        0.8,
-        positionLocal.y
-    );
+    const noise = noiseSample.r;
 
-    material.colorNode = mix(
-        vec3(0.10, 0.24, 0.06),
-        vec3(0.32, 0.58, 0.18),
+    // deep forest greens (low saturation, earthy)
+    const deepShadow = vec3(0.03, 0.08, 0.04);
+    const forestDark = vec3(0.06, 0.14, 0.07);
+    const mossGreen = vec3(0.10, 0.22, 0.10);
+    const softGreen = vec3(0.117, 0.195, 0.104);
 
-        heightGradient.add(
-            noiseSample.r.mul(0.25)
-        )
-    );
+    // subtle warm life (barely visible sun kiss)
+
+    // height shaping (very soft, no sharp bands)
+    const h = smoothstep(-0.2, 1.0, positionLocal.y);
+
+    // layered depth
+    const baseLow = mix(deepShadow, forestDark, smoothstep(0.0, 0.4, h));
+    const baseHigh = mix(mossGreen, softGreen, smoothstep(0.4, 1.0, h));
+
+    let base = mix(baseLow, baseHigh, h);
+
+    // gentle breakup (keep it subtle, Ghibli is calm)
+    const variation = noise.sub(0.5).mul(0.08);
+
+
+
+    // final color
+    const finalColor = base
+        .add(variation)
+
+
+    material.colorNode = finalColor;
 
     return { material };
 }

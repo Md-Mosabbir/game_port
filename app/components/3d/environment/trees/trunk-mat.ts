@@ -4,8 +4,8 @@ import { MeshBasicNodeMaterial } from 'three/webgpu';
 
 export function createTrunkMaterial(uniforms: any, config: any) {
     const material = new MeshBasicNodeMaterial();
-    
-    material.colorNode = vec3(0.24, 0.17, 0.12); 
+
+    material.colorNode = vec3(0.24, 0.17, 0.12);
 
     const uSpeed = uniform(config?.windSpeed ?? 0.8);
     const uIntensity = uniform(config?.swayIntensity ?? 0.08);
@@ -30,9 +30,9 @@ export function createTrunkMaterial(uniforms: any, config: any) {
     const baseWave = sin(t.add(wrappedX.mul(0.4)).add(wrappedZ.mul(0.3)));
     const microWave1 = sin(t.mul(2.5).add(wrappedX.mul(2.1)));
     const microWave2 = sin(t.mul(4.0).add(wrappedZ.mul(3.7)));
-    
+
     const windAccumulator = baseWave.mul(0.6).add(microWave1.mul(0.25)).add(microWave2.mul(0.15));
-    const directionalGust = windAccumulator.add(1.0).mul(0.5); 
+    const directionalGust = windAccumulator.add(1.0).mul(0.5);
 
     const swayX = directionalGust.mul(uIntensity).mul(2.0).mul(heightMask);
     const swayZ = directionalGust.mul(uIntensity).mul(0.4).mul(heightMask);

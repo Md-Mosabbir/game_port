@@ -13,7 +13,7 @@ export function useStylizedBushGeometry(planeCount = 140, config = { bushRadius:
 
       // --- BRUNO'S POSITIONING MATH (Image 1) ---
       // Distributes highly concentrated elements near the absolute center
-      const radiusFactor = 1 - Math.pow(Math.random(), 3);
+      const radiusFactor = 1 - Math.pow(Math.random(), 2);
       const r = radiusFactor * config.bushRadius;
 
       const spherical = new THREE.Spherical(
