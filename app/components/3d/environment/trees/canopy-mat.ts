@@ -73,7 +73,7 @@ export function createCanopyMaterial(
     const swayX = directionalGust.mul(uIntensity).mul(2.0);
     const swayZ = directionalGust.mul(uIntensity).mul(0.4);
 
-    const liftAmount = 4.0; 
+    const liftAmount = 5.0; 
 
     material.positionNode = vec3(
         positionLocal.x.add(swayX).add(wrappedX),

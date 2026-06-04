@@ -37,6 +37,8 @@ export function Trees({
   const trunkRef = useRef<THREE.InstancedMesh>(null!);
   const canopyRef = useRef<THREE.InstancedMesh>(null!);
 
+  const baseHeight = config.treeHeight || 9.0; // Updated base height default
+
   const [noiseTex, alphaTex] = useTexture([
     '/textures/perlin_noise.png',
     '/textures/alpha.png',
@@ -52,7 +54,6 @@ export function Trees({
   // ─────────────────────────────────────────────
   const mergedTrunkGeometry = useMemo(() => {
     const geometries: THREE.BufferGeometry[] = [];
-    const baseHeight = 5;
 
     // 1. Main Trunk (Offset so Y=0 is the base)
     const trunkGeo = new THREE.CylinderGeometry(0.12, 0.2, baseHeight, 16);
@@ -60,34 +61,32 @@ export function Trees({
     geometries.push(trunkGeo);
 
     // 2. Branches
-    const baseBranchGeo = new THREE.CylinderGeometry(0.05, 0.1, 2, 8); // 2 units tall base
     const dummy = new THREE.Object3D();
 
     BRANCH_CONFIGS.forEach((bc) => {
-      const branchGeo = baseBranchGeo.clone();
-      
       const len = baseHeight * bc.lengthFrac;
       const attachY = baseHeight * bc.heightFrac;
-      const halfLen = len / 2;
 
-      // Position branch outward and upward
-      dummy.position.set(
-        Math.sin(bc.angle) * Math.cos(bc.rotY) * halfLen,
-        attachY + Math.cos(bc.angle) * halfLen,
-        Math.sin(bc.angle) * Math.sin(bc.rotY) * halfLen
-      );
+      // Create a fresh cylinder for this branch using its calculated length
+      const branchGeo = new THREE.CylinderGeometry(0.03, 0.09, len, 8);
+      
+      // [FIXED] Shift the branch geometry up by half its length.
+      // This permanently repositions its local origin (0,0,0) to its bottom base.
+      branchGeo.translate(0, len / 2, 0);
 
-      // Rotate and scale branch length
-      dummy.rotation.set(bc.angle, bc.rotY, 0, 'YXZ');
-      dummy.scale.set(1, len / 2, 1); // Scale Y based on the 2-unit base geometry
+      // Now we reset our dummy object cleanly
+      dummy.position.set(0, attachY, 0);             // Snap origin directly to trunk height
+      dummy.rotation.set(bc.angle, bc.rotY, 0, 'YXZ'); // Rotate cleanly outward from the base pivot
+      dummy.scale.set(1, 1, 1);                        // Reset scale since len is built into geometry
       dummy.updateMatrix();
 
+      // Apply the transformation matrix directly to the geometry vertices
       branchGeo.applyMatrix4(dummy.matrix);
       geometries.push(branchGeo);
     });
 
     return BufferGeometryUtils.mergeGeometries(geometries);
-  }, []);
+  }, [baseHeight]);
 
   const uniforms = useMemo(() => ({
     cameraXZ: uniform(new THREE.Vector2()),
@@ -101,7 +100,7 @@ export function Trees({
     if (!noiseTex || !alphaTex) return;
     setTrunkMat(createTrunkMaterial(uniforms, config));
     setCanopyMat(createCanopyMaterial(uniforms, noiseTex, alphaTex, config));
-  }, [noiseTex, alphaTex]);
+  }, [noiseTex, alphaTex, config]);
 
   const spawnData = useMemo(() => (
     Array.from({ length: count }, () => {
@@ -110,11 +109,11 @@ export function Trees({
         x: (Math.random() - 0.5) * fieldSize,
         z: (Math.random() - 0.5) * fieldSize,
         scale: scale,
-        height: 5 * scale, // Sync total height to scale multiplier perfectly
+        height: baseHeight * scale, 
         rotY: Math.random() * Math.PI * 2,
       };
     })
-  ), [count, fieldSize]);
+  ), [count, fieldSize, baseHeight]);
 
   const dummy = useMemo(() => new THREE.Object3D(), []);
 
@@ -150,18 +149,14 @@ export function Trees({
       spawnXZ[i * 2] = d.x;
       spawnXZ[i * 2 + 1] = d.z;
 
-      // ─────────────
-      // UNIFIED TRUNK & BRANCHES
-      // ─────────────
-      dummy.position.set(0, 0, 0); // Geometry is already grounded internally via .translate!
+      // Unified Trunk Matrix Mapping
+      dummy.position.set(0, 0, 0); 
       dummy.scale.setScalar(d.scale);
       dummy.rotation.set(0, d.rotY, 0);
       dummy.updateMatrix();
       trunkRef.current.setMatrixAt(i, dummy.matrix);
 
-      // ─────────────
-      // CANOPY
-      // ─────────────
+      // Canopy Placement Matrix Mapping
       dummy.position.set(0, d.height, 0);
       dummy.scale.setScalar(d.scale);
       dummy.rotation.set(0, d.rotY, 0);

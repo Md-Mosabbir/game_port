@@ -11,6 +11,7 @@ export const FOLIAGE_CONFIG = {
 	treeCount: 10,
 	treePlaneCount: 150,
 	treeBushRadius: 2.2,
+	treeHeight: 7.0,
 
 	// --- Global Wind Environment ---
 	windSpeed: 0.5,
@@ -42,6 +43,7 @@ export const setupFoliageControls = () => {
 	folder.addBinding(FOLIAGE_CONFIG, 'treeCount', { min: 5, max: 100, step: 1 }).on('change', notify);
 	folder.addBinding(FOLIAGE_CONFIG, 'treePlaneCount', { min: 10, max: 200, step: 5 }).on('change', notify);
 	folder.addBinding(FOLIAGE_CONFIG, 'treeBushRadius', { min: 0.5, max: 5.0, step: 0.1 }).on('change', notify);
+	folder.addBinding(FOLIAGE_CONFIG, 'treeHeight', { min: 2.0, max: 15.0, step: 0.5 }).on('change', notify);
 
 	folder.addBinding(FOLIAGE_CONFIG, 'windSpeed', { min: 0.0, max: 2.0, step: 0.05 }).on('change', notify);
 	folder.addBinding(FOLIAGE_CONFIG, 'swayIntensity', { min: 0.0, max: 1.0, step: 0.01 }).on('change', notify);

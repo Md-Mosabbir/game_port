@@ -34,8 +34,10 @@ export function createTrunkMaterial(uniforms: any, config: any) {
         .sub(halfField)
         .add(uniforms.cameraXZ.y);
 
-    // Height mask matches the 5-unit unified cylinder height
-    const heightMask = smoothstep(0.0, 5.0, positionLocal.y);
+    // ─── DYNAMIC GEOMETRY HEIGHT SYSTEM ──────────────────────────────────
+    // [FIXED] Updated standard layout bounds from 5.0 up to 9.0 to match your unified geometry
+    const totalTrunkHeight = float(config.treeHeight || 9.0);
+    const heightMask = smoothstep(0.0, totalTrunkHeight, positionLocal.y);
 
     // ─── WIND ACCUMULATION ──────────────────────────────────────────────
     const t = time.mul(uSpeed);
@@ -62,19 +64,18 @@ export function createTrunkMaterial(uniforms: any, config: any) {
     const selectOrange = treeSeedNoise.smoothstep(0.73, 0.77);
     const selectYellow = treeSeedNoise.smoothstep(0.86, 0.90);
 
-    // ─── THE NEW CONTRAST PALETTES ──────────────────────────────────────
-
+    // ─── THE CONTRAST PALETTES ──────────────────────────────────────────
     // 🌲 1. Standard Green Trees -> Dark Forest Mahogany
     const barkForestDeep = vec3(0.03, 0.02, 0.015);
     const barkForestMain = vec3(0.14, 0.09, 0.06);
 
-    // 🌸 2. Cherry Pink Trees -> Ghibli White Birch (Crisp, stylized light wood)
-    const barkCherryDeep = vec3(0.42, 0.40, 0.45); // Soft grey-purple under-grain
-    const barkCherryMain = vec3(0.88, 0.86, 0.88); // Stark chalky anime white
+    // 🌸 2. Cherry Pink Trees -> Ghibli White Birch 
+    const barkCherryDeep = vec3(0.42, 0.40, 0.45); 
+    const barkCherryMain = vec3(0.88, 0.86, 0.88); 
 
     // 🍊 3. Sunset Orange Trees -> Rich Golden Medium Brown
     const barkOrangeDeep = vec3(0.16, 0.08, 0.03);
-    const barkOrangeMain = vec3(0.42, 0.24, 0.12); // Deep warm gingerbread/chestnut
+    const barkOrangeMain = vec3(0.42, 0.24, 0.12); 
 
     // 💛 4. Golden Yellow Trees -> Mossy Olive Ochre
     const barkYellowDeep = vec3(0.10, 0.11, 0.06);
@@ -88,12 +89,16 @@ export function createTrunkMaterial(uniforms: any, config: any) {
     const uniqueTrunkOffset = aSpawnXZ.x.add(aSpawnXZ.y);
 
     // For the white tree, we want tighter, cleaner knot markings
-    const stripeScaleX = mix(float(2.0), float(3.5), selectCherry);
-    const stripeScaleY = mix(float(0.25), float(0.45), selectCherry);
+    const stripeScaleX = mix(float(2.5), float(4.5), selectCherry);
+    const stripeScaleY = mix(float(2.0), float(4.0), selectCherry); // Adjusted for normalized ratios
+
+    // [FIXED] Substituted raw local Y for a normalized scale ratio (positionLocal.y / totalTrunkHeight)
+    // This stops scaling transformations from pulling wood lines completely out of visual focus!
+    const normalizedY = positionLocal.y.div(totalTrunkHeight);
 
     const barkUV = vec2(
         worldX.add(worldZ).mul(stripeScaleX).add(uniqueTrunkOffset),
-        worldY.mul(stripeScaleY)
+        normalizedY.mul(stripeScaleY).mul(8.0) // Fixed pattern matching
     );
 
     const noiseLine = mx_noise_float(barkUV);
@@ -101,7 +106,7 @@ export function createTrunkMaterial(uniforms: any, config: any) {
     let finalBarkColor = mix(deepBark, mainBark, barkStripeMask);
 
     // Ground ambient occlusion shadow
-    const rootOcclusion = smoothstep(1.2, 0.0, worldY).mul(0.5);
+    const rootOcclusion = smoothstep(0.2, 0.0, normalizedY).mul(0.6);
     finalBarkColor = mix(finalBarkColor, deepBark, rootOcclusion);
 
     // ─── TOON LIGHTING STEP (SHARP EDGES) ───────────────────────────────
@@ -111,7 +116,7 @@ export function createTrunkMaterial(uniforms: any, config: any) {
     const wrappedLight = lightIntensity.mul(0.5).add(0.5);
     const stylizedLight = wrappedLight.smoothstep(0.32, 0.58);
 
-    // Ambient shadow factor (adjusted so white trees don't get pitch black shadows)
+    // Ambient shadow factor
     const shadowMult = mix(vec3(0.40, 0.45, 0.55), vec3(0.55, 0.58, 0.68), selectCherry);
     const shadowTint = finalBarkColor.mul(shadowMult);
 

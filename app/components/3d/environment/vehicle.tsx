@@ -115,9 +115,31 @@ export const Vehicle = ({ position, rotation, chasisBodyRef, mobileControls }: V
 		controller.setWheelSteering(0, steering);
 		controller.setWheelSteering(1, steering);
 
+		// 1. Manual Reset (R key): Return to original spawn completely
 		if (merged.reset) {
 			chassisRigidBody.setTranslation(new rapier.Vector3(...position), true);
 			chassisRigidBody.setRotation(new THREE.Quaternion().setFromEuler(new THREE.Euler(...rotation)), true);
+			chassisRigidBody.setLinvel(new rapier.Vector3(0, 0, 0), true);
+			chassisRigidBody.setAngvel(new rapier.Vector3(0, 0, 0), true);
+		}
+
+		// 2. Auto-Reflip: If the car flips, right it at its CURRENT position
+		const currentRotation = chassisRigidBody.rotation();
+		const currentQuat = new THREE.Quaternion(currentRotation.x, currentRotation.y, currentRotation.z, currentRotation.w);
+		const upVector = new THREE.Vector3(0, 1, 0).applyQuaternion(currentQuat);
+
+		if (upVector.y < 0.1 && !merged.reset) {
+			const currentPos = chassisRigidBody.translation();
+			
+			// Get current heading (yaw) so we face the same direction, but remove pitch and roll
+			const euler = new THREE.Euler().setFromQuaternion(currentQuat, "YXZ");
+			const uprightQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, euler.y, 0, "YXZ"));
+			
+			// Pop the car up slightly so it falls back down nicely
+			chassisRigidBody.setTranslation(new rapier.Vector3(currentPos.x, currentPos.y + 2.0, currentPos.z), true);
+			chassisRigidBody.setRotation(new rapier.Quaternion(uprightQuat.x, uprightQuat.y, uprightQuat.z, uprightQuat.w), true);
+			
+			// Kill all momentum so it doesn't instantly flip again or shoot off
 			chassisRigidBody.setLinvel(new rapier.Vector3(0, 0, 0), true);
 			chassisRigidBody.setAngvel(new rapier.Vector3(0, 0, 0), true);
 		}

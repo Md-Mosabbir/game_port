@@ -7,8 +7,8 @@ export const JEEP_CONFIG = {
     width: 0.63,
     
     // Vehicle Physics
-    accelerateForce: 4,
-    brakeForce: 0.1,
+    accelerateForce: 15,
+    brakeForce: 0.6,
     steerAngle: Math.PI / 8,
 
     // Scale
@@ -52,8 +52,8 @@ export const setupJeepControls = () => {
     wheelFolder.addBinding(JEEP_CONFIG, 'width', { min: 0.2, max: 1.5, step: 0.01 }).on('change', notify);
 
     const physicsFolder = folder.addFolder({ title: 'Vehicle Physics' });
-    physicsFolder.addBinding(JEEP_CONFIG, 'accelerateForce', { min: 0, max: 20 }).on('change', notify);
-    physicsFolder.addBinding(JEEP_CONFIG, 'brakeForce', { min: 0, max: 1.0, step: 0.01 }).on('change', notify);
+    physicsFolder.addBinding(JEEP_CONFIG, 'accelerateForce', { min: 0, max: 30 }).on('change', notify);
+    physicsFolder.addBinding(JEEP_CONFIG, 'brakeForce', { min: 0, max: 2.0, step: 0.01 }).on('change', notify);
     physicsFolder.addBinding(JEEP_CONFIG, 'steerAngle', { min: 0, max: Math.PI / 4 }).on('change', notify);
 
     const scaleFolder = folder.addFolder({ title: 'Scale' });
