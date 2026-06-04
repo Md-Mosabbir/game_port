@@ -11,7 +11,9 @@ import {
     time,
     uniform,
     uv,
-    vec3
+    vec3,
+    normalWorld,
+    dot
 } from 'three/tsl';
 
 import { texture } from 'three/tsl';
@@ -139,10 +141,31 @@ export function createBushMaterial(
 
 
 
-    // final color
-    const finalColor = base
-        .add(variation)
+    // final base color with noise
+    let finalColor = base.add(variation);
 
+    // ─────────────────────────────
+    // STEP 1: CUSTOM DIFFUSE LIGHTING
+    // ─────────────────────────────
+    
+    // 1. Define the Light Direction (pointing towards the sun)
+    const lightDirection = vec3(1.0, 1.0, 0.5).normalize();
+
+    // 2. Calculate the Dot Product between surface normal and light direction
+    const lightIntensity = dot(normalWorld, lightDirection);
+
+    // 3. Remap the Intensity (Half-Lambert wrap: * 0.5 + 0.5)
+    const wrappedLight = lightIntensity.mul(0.5).add(0.5);
+
+    // 4. Stylize the Transition
+    const stylizedLight = wrappedLight.smoothstep(0.3, 0.7);
+
+    // 5. Mix between a shadow tint and the base color based on lighting
+    // We create a deeper, cooler shadow by darkening and slightly blue-shifting
+    const shadowTint = finalColor.mul(vec3(0.5, 0.6, 0.7)); 
+    
+    // Apply lighting to final color
+    finalColor = mix(shadowTint, finalColor, stylizedLight);
 
     material.colorNode = finalColor;
 
