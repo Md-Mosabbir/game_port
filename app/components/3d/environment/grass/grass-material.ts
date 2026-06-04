@@ -14,6 +14,10 @@ import {
 	time,
 	vec2,
 	vec3,
+	color,
+	mx_noise_float,
+	normalWorld,
+	dot
 } from 'three/tsl';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -185,8 +189,51 @@ export function createGrassMaterial(
 		.add(billboardOffset)
 		.add(vec3(windBend, flattenedHeight, windBend.mul(0.5)));
 
-	// ── Color ──────────────────────────────────────────────────────────────
-	material.colorNode = mix(uniforms.colorBase, uniforms.colorTip, aTipness);
+	// ── Color & Shading ────────────────────────────────────────────────────────
+	// 1. Generate noise for grass patches
+	const noiseValue = mx_noise_float(vec2(wrappedCenterX, wrappedCenterZ).mul(0.1)).add(1.0).mul(0.5);
+
+	const mixDarkLight = noiseValue.smoothstep(0.2, 0.5);
+	const mixLightYellow = noiseValue.smoothstep(0.5, 0.8);
+
+	const colorLightBase = uniforms.colorBase;
+	const colorLightTip = uniforms.colorTip;
+
+	const colorDarkBase = color('#1d3a14'); 
+	const colorDarkTip = color('#2e5c20');
+
+	const colorYellowBase = color('#54521f');
+	const colorYellowTip = color('#a39d33');
+
+	const finalBase = mix(mix(colorDarkBase, colorLightBase, mixDarkLight), colorYellowBase, mixLightYellow);
+	const finalTip = mix(mix(colorDarkTip, colorLightTip, mixDarkLight), colorYellowTip, mixLightYellow);
+
+	// Get the base color for this specific height on the blade
+	const bladeColor = mix(finalBase, finalTip, aTipness);
+
+	// 2. Custom Diffuse Lighting (Half-Lambert)
+	const lightDirection = vec3(1.0, 1.0, 0.5).normalize();
+	const lightIntensity = dot(normalWorld, lightDirection);
+	const wrappedLight = lightIntensity.mul(0.5).add(0.5);
+	const stylizedLight = wrappedLight.smoothstep(0.3, 0.7);
+
+	// 3. Simulated Global Illumination (Ground Bounce)
+	// Calculates light bouncing off the track/ground
+	const downVector = vec3(0.0, -1.0, 0.0);
+	const bounceIntensity = dot(normalWorld, downVector).clamp(0.0, 1.0);
+	// We want the bounce to be strongest at the root (aTipness = 0) and fade near the tip
+	const bounceHeightFactor = float(1.0).sub(aTipness);
+	const bounceLight = bounceIntensity.mul(bounceHeightFactor).mul(0.5); // 0.5 strength
+
+	// Combine diffuse and bounce light
+	const totalLight = stylizedLight.add(bounceLight).clamp(0.0, 1.0);
+
+	// 4. Dynamic Shadow Tinting
+	// Replace raw dark values with a cool, deep forest shadow
+	const shadowColor = color('#14241d'); 
+	
+	// Apply lighting by interpolating between the shadow color and the actual blade color
+	material.colorNode = mix(shadowColor, bladeColor, totalLight);
 
 
 
