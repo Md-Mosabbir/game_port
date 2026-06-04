@@ -1,56 +1,79 @@
 import * as THREE from 'three';
-import { mix, mod, positionLocal, smoothstep, uv, vec3, texture, attribute, uniform, sin, time } from 'three/tsl';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
+import {
+    attribute,
+    mix,
+    mod,
+    positionLocal,
+    sin,
+    smoothstep,
+    time,
+    uniform,
+    uv,
+    vec3,
+    normalWorld,
+    dot,
+    texture,
+    float,
+    mx_noise_float
+} from 'three/tsl';
 
 export function createCanopyMaterial(
-    uniforms: { cameraXZ: any; fieldSize: any; },
+    uniforms: {
+        cameraXZ: any;
+        fieldSize: any;
+    },
     noiseTex: THREE.Texture,
     alphaTex: THREE.Texture,
-    config: any
-) {
+    config?: {
+        windSpeed?: number;
+        swayIntensity?: number;
+    }
+): MeshBasicNodeMaterial {
+
     const material = new MeshBasicNodeMaterial({
         side: THREE.DoubleSide,
     });
 
+    // ─── VISIBILITY & ALPHA FIX ──────────────────────────────────────────
     material.transparent = true;
-    material.alphaTest = 0.5;
+    material.depthWrite = true;
 
+    // ─── WIND UNIFORMS ───────────────────────────────────────────────────
     const uSpeed = uniform(config?.windSpeed ?? 0.8);
     const uIntensity = uniform(config?.swayIntensity ?? 0.08);
+
     material.userData = { uSpeed, uIntensity };
 
+    // ─── INFINITE WRAP LOGIC ─────────────────────────────────────────────
     const aSpawnXZ = attribute('aSpawnXZ', 'vec2');
     const halfField = uniforms.fieldSize.mul(0.5);
 
-    const wrappedX = mod(aSpawnXZ.x.sub(uniforms.cameraXZ.x).add(halfField), uniforms.fieldSize)
+    const wrappedX = mod(
+        aSpawnXZ.x.sub(uniforms.cameraXZ.x).add(halfField),
+        uniforms.fieldSize
+    )
         .sub(halfField)
         .add(uniforms.cameraXZ.x);
 
-    const wrappedZ = mod(aSpawnXZ.y.sub(uniforms.cameraXZ.y).add(halfField), uniforms.fieldSize)
+    const wrappedZ = mod(
+        aSpawnXZ.y.sub(uniforms.cameraXZ.y).add(halfField),
+        uniforms.fieldSize
+    )
         .sub(halfField)
         .add(uniforms.cameraXZ.y);
 
-    // ─────────────────────────────────────────────
-    // REALISTIC TURBULENT WIND MATH
-    // ─────────────────────────────────────────────
+    // ─── TURBULENT WIND ANIMATION ────────────────────────────────────────
     const t = time.mul(uSpeed);
-
-    // Primary gust wave (slow, sweeping)
     const baseWave = sin(t.add(wrappedX.mul(0.4)).add(wrappedZ.mul(0.3)));
-
-    // Secondary micro-turbulence (fast, chaotic ripples)
     const microWave1 = sin(t.mul(2.5).add(wrappedX.mul(2.1)));
-    const microWave2 = sin(t.mul(4.0).add(wrappedZ.mul(3.7)));
-
-    // Combine waves and bias them between 0.0 and 1.0 (so wind blows in ONE direction)
-    const windAccumulator = baseWave.mul(0.6).add(microWave1.mul(0.25)).add(microWave2.mul(0.15));
+    const windAccumulator = baseWave.mul(0.6).add(microWave1.mul(0.25));
     const directionalGust = windAccumulator.add(1.0).mul(0.5);
 
-    // Define wind blowing primarily along the X axis, with a slight drift on Z
     const swayX = directionalGust.mul(uIntensity).mul(2.0);
     const swayZ = directionalGust.mul(uIntensity).mul(0.4);
 
-    const liftAmount = 4.0;
+    const liftAmount = 4.0; 
 
     material.positionNode = vec3(
         positionLocal.x.add(swayX).add(wrappedX),
@@ -58,55 +81,77 @@ export function createCanopyMaterial(
         positionLocal.z.add(swayZ).add(wrappedZ)
     );
 
+    // ─── TEXTURES ────────────────────────────────────────────────────────
     const alphaSample = texture(alphaTex, uv());
     const noiseSample = texture(noiseTex, uv());
 
-    material.opacityNode = alphaSample.r.smoothstep(0.45, 0.55);
+    // ─── ALPHA TESTING FIX (INVERTED CHANNEL) ────────────────────────────
+    const invertedAlpha = float(1.0).sub(alphaSample.r);
+    material.alphaTestNode = invertedAlpha.smoothstep(0.45, 0.55);
 
+    // ─── PROCEDURAL PALETTE VARIATION (60% GREEN / 40% MIXED) ────────────
+    const treeSeedNoise = mx_noise_float(aSpawnXZ.mul(0.05)).add(1.0).mul(0.5);
 
-    const noise = noiseSample.r;
+    // [CHANGED] Dynamic thresholds shifted up to guarantee 60% default Forest Green
+    // 0.00 to 0.60 -> Deep Forest Green (60%)
+    // 0.60 to 0.73 -> Bright Cherry Pink (13.3%)
+    // 0.73 to 0.86 -> Ghibli Sunset Orange (13.3%)
+    // 0.86 to 1.00 -> Golden Yellow-Green (13.3%)
+    const selectCherry = treeSeedNoise.smoothstep(0.60, 0.64);
+    const selectOrange = treeSeedNoise.smoothstep(0.73, 0.77);
+    const selectYellow = treeSeedNoise.smoothstep(0.86, 0.90);
 
-    // ─────────────────────────────
-    // 🌿 SAFE COLOR PALETTE
-    // ─────────────────────────────
+    // ─────────────────────────────────────────────────────────────────
+    // 🌿 RE-ENGINEERED GHIBLI PALETTES
+    // ─────────────────────────────────────────────────────────────────
+    
+    // 🌲 1. Deep Forest Green (Dominant Base Color)
+    const forestDeep   = vec3(0.01, 0.04, 0.02);
+    const forestMid    = vec3(0.04, 0.12, 0.05);
+    const forestBright = vec3(0.08, 0.22, 0.10);
 
-    const deepShade = vec3(0.01, 0.04, 0.02);  // near-black forest floor green
-    const midGreen = vec3(0.03, 0.12, 0.05);  // muted moss green
-    const brightGreen = vec3(0.06, 0.18, 0.08);  // soft leaf highlight (NOT neon)
-    const sunYellow = vec3(0.55, 0.50, 0.18);  // desaturated dry sunlight tint
+    // 🌸 2. Bright Cherry Pink
+    const cherryDeep   = vec3(0.45, 0.05, 0.20);
+    const cherryMid    = vec3(0.95, 0.25, 0.55);
+    const cherryBright = vec3(1.00, 0.45, 0.70);
 
-    // ─────────────────────────────
-    // 🌄 HEIGHT MASK
-    // ─────────────────────────────
+    // 🍊 3. Sunset Orange
+    const orangeDeep   = vec3(0.30, 0.05, 0.00);
+    const orangeMid    = vec3(0.85, 0.28, 0.02);
+    const orangeBright = vec3(0.98, 0.48, 0.05);
 
+    // 💛 4. Golden Yellow-Green
+    const yellowDeep   = vec3(0.05, 0.08, 0.02);
+    const yellowMid    = vec3(0.35, 0.42, 0.05);
+    const yellowBright = vec3(0.68, 0.68, 0.12);
+
+    // Blend everything sequentially based on our 60/40 split thresholds
+    const finalDeep   = mix(mix(mix(forestDeep,   cherryDeep,   selectCherry), orangeDeep,   selectOrange), yellowDeep,   selectYellow);
+    const finalMid    = mix(mix(mix(forestMid,    cherryMid,    selectCherry), orangeMid,    selectOrange), yellowMid,    selectYellow);
+    const finalBright = mix(mix(mix(forestBright, cherryBright, selectCherry), orangeBright, selectOrange), yellowBright, selectYellow);
+
+    // ─── HEIGHT MASK AND COLOR BREAKUP ───────────────────────────────────
     const h = smoothstep(0.0, 1.0, positionLocal.y);
+    const internalNoise = noiseSample.r;
 
-    // base layering (NO JS + / -)
-    let base = mix(deepShade, midGreen, h);
-    base = mix(base, brightGreen, h.mul(0.7));
+    let baseColor = mix(finalDeep, finalMid, h);
+    baseColor = mix(baseColor, finalBright, h.mul(internalNoise.add(0.4)));
 
-    // ─────────────────────────────
-    // 🌞 SUN MASK (SAFE)
-    // ─────────────────────────────
+    // Micro leaf variation
+    const variation = internalNoise.sub(0.5).mul(0.04);
+    baseColor = baseColor.add(vec3(variation));
 
-    const sunMask = smoothstep(0.7, 1.0, uv().x).mul(h);
+    // ─── STYLIZED DIFFUSE LIGHTING (Ghibli Shading) ──────────────────────
+    const lightDirection = vec3(1.0, 1.0, 0.5).normalize();
+    const lightIntensity = dot(normalWorld, lightDirection);
+    
+    const wrappedLight = lightIntensity.mul(0.5).add(0.5);
+    const stylizedLight = wrappedLight.smoothstep(0.35, 0.65);
 
-    // blend toward yellow instead of adding
-    base = mix(base, sunYellow, sunMask.mul(0.15));
+    // Atmospheric cool tint for shadowed fields
+    const shadowTint = baseColor.mul(vec3(0.48, 0.52, 0.58)); 
+    
+    material.colorNode = mix(shadowTint, baseColor, stylizedLight);
 
-    // ─────────────────────────────
-    // 🌿 VARIATION (SAFE NODE MATH)
-    // ─────────────────────────────
-
-    const variation = noise.sub(0.5).mul(0.05);
-
-    // IMPORTANT: use add(), not +
-    base = base.add(vec3(variation));
-
-    // ─────────────────────────────
-    // FINAL
-    // ─────────────────────────────
-
-    material.colorNode = base;
     return material;
 }

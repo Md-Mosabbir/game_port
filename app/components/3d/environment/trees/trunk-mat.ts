@@ -1,11 +1,23 @@
-import * as THREE from 'three';
-import { attribute, mod, positionLocal, vec3, uniform, sin, time, smoothstep } from 'three/tsl';
+import {
+    attribute,
+    mod,
+    positionLocal,
+    vec3,
+    uniform,
+    sin,
+    time,
+    smoothstep,
+    dot,
+    normalWorld,
+    mx_noise_float,
+    vec2,
+    mix,
+    float
+} from 'three/tsl';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 
 export function createTrunkMaterial(uniforms: any, config: any) {
     const material = new MeshBasicNodeMaterial();
-
-    material.colorNode = vec3(0.24, 0.17, 0.12);
 
     const uSpeed = uniform(config?.windSpeed ?? 0.8);
     const uIntensity = uniform(config?.swayIntensity ?? 0.08);
@@ -25,7 +37,7 @@ export function createTrunkMaterial(uniforms: any, config: any) {
     // Height mask matches the 5-unit unified cylinder height
     const heightMask = smoothstep(0.0, 5.0, positionLocal.y);
 
-    // Identical wind calculation matching canopy for unified structural bending
+    // ─── WIND ACCUMULATION ──────────────────────────────────────────────
     const t = time.mul(uSpeed);
     const baseWave = sin(t.add(wrappedX.mul(0.4)).add(wrappedZ.mul(0.3)));
     const microWave1 = sin(t.mul(2.5).add(wrappedX.mul(2.1)));
@@ -37,11 +49,73 @@ export function createTrunkMaterial(uniforms: any, config: any) {
     const swayX = directionalGust.mul(uIntensity).mul(2.0).mul(heightMask);
     const swayZ = directionalGust.mul(uIntensity).mul(0.4).mul(heightMask);
 
-    material.positionNode = vec3(
-        positionLocal.x.add(swayX).add(wrappedX),
-        positionLocal.y,
-        positionLocal.z.add(swayZ).add(wrappedZ)
+    const worldX = positionLocal.x.add(swayX).add(wrappedX);
+    const worldY = positionLocal.y;
+    const worldZ = positionLocal.z.add(swayZ).add(wrappedZ);
+
+    material.positionNode = vec3(worldX, worldY, worldZ);
+
+    // ─── PROCEDURAL BARK SEED SYSTEM (60/40 SPLIT) ──────────────────────
+    const treeSeedNoise = mx_noise_float(aSpawnXZ.mul(0.05)).add(1.0).mul(0.5);
+
+    const selectCherry = treeSeedNoise.smoothstep(0.60, 0.64);
+    const selectOrange = treeSeedNoise.smoothstep(0.73, 0.77);
+    const selectYellow = treeSeedNoise.smoothstep(0.86, 0.90);
+
+    // ─── THE NEW CONTRAST PALETTES ──────────────────────────────────────
+
+    // 🌲 1. Standard Green Trees -> Dark Forest Mahogany
+    const barkForestDeep = vec3(0.03, 0.02, 0.015);
+    const barkForestMain = vec3(0.14, 0.09, 0.06);
+
+    // 🌸 2. Cherry Pink Trees -> Ghibli White Birch (Crisp, stylized light wood)
+    const barkCherryDeep = vec3(0.42, 0.40, 0.45); // Soft grey-purple under-grain
+    const barkCherryMain = vec3(0.88, 0.86, 0.88); // Stark chalky anime white
+
+    // 🍊 3. Sunset Orange Trees -> Rich Golden Medium Brown
+    const barkOrangeDeep = vec3(0.16, 0.08, 0.03);
+    const barkOrangeMain = vec3(0.42, 0.24, 0.12); // Deep warm gingerbread/chestnut
+
+    // 💛 4. Golden Yellow Trees -> Mossy Olive Ochre
+    const barkYellowDeep = vec3(0.10, 0.11, 0.06);
+    const barkYellowMain = vec3(0.36, 0.35, 0.22);
+
+    // Cascade blend based on the shared seed
+    const deepBark = mix(mix(mix(barkForestDeep, barkCherryDeep, selectCherry), barkOrangeDeep, selectOrange), barkYellowDeep, selectYellow);
+    const mainBark = mix(mix(mix(barkForestMain, barkCherryMain, selectCherry), barkOrangeMain, selectOrange), barkYellowMain, selectYellow);
+
+    // ─── STYLIZED WOOD GRAIN STRIPES ────────────────────────────────────
+    const uniqueTrunkOffset = aSpawnXZ.x.add(aSpawnXZ.y);
+
+    // For the white tree, we want tighter, cleaner knot markings
+    const stripeScaleX = mix(float(2.0), float(3.5), selectCherry);
+    const stripeScaleY = mix(float(0.25), float(0.45), selectCherry);
+
+    const barkUV = vec2(
+        worldX.add(worldZ).mul(stripeScaleX).add(uniqueTrunkOffset),
+        worldY.mul(stripeScaleY)
     );
+
+    const noiseLine = mx_noise_float(barkUV);
+    const barkStripeMask = smoothstep(0.18, 0.42, noiseLine);
+    let finalBarkColor = mix(deepBark, mainBark, barkStripeMask);
+
+    // Ground ambient occlusion shadow
+    const rootOcclusion = smoothstep(1.2, 0.0, worldY).mul(0.5);
+    finalBarkColor = mix(finalBarkColor, deepBark, rootOcclusion);
+
+    // ─── TOON LIGHTING STEP (SHARP EDGES) ───────────────────────────────
+    const lightDirection = vec3(1.0, 1.0, 0.5).normalize();
+    const lightIntensity = dot(normalWorld, lightDirection);
+
+    const wrappedLight = lightIntensity.mul(0.5).add(0.5);
+    const stylizedLight = wrappedLight.smoothstep(0.32, 0.58);
+
+    // Ambient shadow factor (adjusted so white trees don't get pitch black shadows)
+    const shadowMult = mix(vec3(0.40, 0.45, 0.55), vec3(0.55, 0.58, 0.68), selectCherry);
+    const shadowTint = finalBarkColor.mul(shadowMult);
+
+    material.colorNode = mix(shadowTint, finalBarkColor, stylizedLight);
 
     return material;
 }

@@ -95,6 +95,8 @@ export function Bushes({ count, planeCount, config, chasisBodyRef, fieldSize = 1
             frustumCulled={false}
             castShadow
             receiveShadow
+         
+        customDepthMaterial={material}
         />
     );
 }
