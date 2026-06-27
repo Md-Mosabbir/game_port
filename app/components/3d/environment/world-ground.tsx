@@ -24,7 +24,8 @@ export const WorldGround = ({ chasisBodyRef }: WorldGroundProps) => {
         const ctx = canvas.getContext('2d');
         if (!ctx) return null;
 
-        ctx.fillStyle = '#7db35b';
+        // A warm, earthy Ghibli-style dirt/path color instead of green
+        ctx.fillStyle = '#f77f6c';
         ctx.fillRect(0, 0, 512, 512);
 
         for (let i = 0; i < 400; i++) {

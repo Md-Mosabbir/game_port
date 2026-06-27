@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { useRef, useMemo, useState, useEffect } from 'react';
 import { useFrame, extend } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
-import { texture, uniform } from 'three/tsl';
-import { MeshStandardNodeMaterial } from 'three/webgpu';
+import { MeshStandardNodeMaterial, MeshBasicNodeMaterial } from 'three/webgpu';
+import { attribute, mod, positionLocal, vec3, vec4, uv, float, texture, uniform, color } from 'three/tsl';
 
 import { GRASS_CONFIG, subscribeToGrassConfig, DEBUG_CONFIG } from '@/app/controls/grassControls';
 import { GRASS_SETTINGS } from './grass-config';
@@ -80,6 +80,57 @@ export function InfiniteGrass({ chasisBodyRef }: { chasisBodyRef?: any }) {
         carHalfX: uniform(1.1),
         carHalfZ: uniform(1.84),
     }), [config, pingTarget]);
+
+    // ── Dark Ground Patches for Grass Clusters ──
+    const patchGeometry = useMemo(() => {
+        const geo = new THREE.PlaneGeometry(1, 1);
+        geo.rotateX(-Math.PI / 2); // Lay flat
+        
+        const spawnXZ = new Float32Array(config.clusterCount * 2);
+        for (let i = 0; i < config.clusterCount; i++) {
+            const cR0 = ((Math.sin((i + 73) * 21.97) * 43758.5453) % 1 + 1) % 1;
+            const cR1 = ((Math.sin((i + 311) * 56.11) * 43758.5453) % 1 + 1) % 1;
+            spawnXZ[i * 2] = (cR0 - 0.5) * GRASS_SETTINGS.FIELD_SIZE;
+            spawnXZ[i * 2 + 1] = (cR1 - 0.5) * GRASS_SETTINGS.FIELD_SIZE;
+        }
+        geo.setAttribute('aSpawnXZ', new THREE.InstancedBufferAttribute(spawnXZ, 2));
+        return geo;
+    }, [config.clusterCount]);
+
+    const patchMaterial = useMemo(() => {
+        const mat = new MeshBasicNodeMaterial({
+            transparent: true,
+            depthWrite: false,
+        });
+
+        const aSpawnXZ = attribute('aSpawnXZ', 'vec2');
+        const halfField = uniforms.fieldSize.mul(0.5);
+
+        const wrappedX = mod(
+            aSpawnXZ.x.sub(uniforms.cameraXZ.x).add(halfField),
+            uniforms.fieldSize
+        ).sub(halfField).add(uniforms.cameraXZ.x);
+
+        const wrappedZ = mod(
+            aSpawnXZ.y.sub(uniforms.cameraXZ.y).add(halfField),
+            uniforms.fieldSize
+        ).sub(halfField).add(uniforms.cameraXZ.y);
+
+        mat.positionNode = vec3(
+            positionLocal.x.mul(config.clusterSpread * 2.5).add(wrappedX),
+            positionLocal.y.add(0.05), // Slightly above the main ground
+            positionLocal.z.mul(config.clusterSpread * 2.5).add(wrappedZ)
+        );
+
+        // Soft circular fade out
+        const dist = uv().sub(0.5).length();
+        const alpha = float(1.0).sub(dist.mul(2.0)).smoothstep(0.0, 0.5);
+        
+        // Dark, rich forest shadow color
+        mat.outputNode = vec4(color('#384227'), alpha.mul(0.85));
+
+        return mat;
+    }, [uniforms, config.clusterSpread]);
 
     // ── Integration Rules ──
     const trackTexNodeRef = useRef<any>(null);
@@ -237,8 +288,16 @@ trackCamera.updateMatrixWorld(true);
     return (
         <>
             {grassMaterial && (
-                <mesh geometry={geometry} material={grassMaterial} frustumCulled={false} />
+                <mesh geometry={geometry} material={grassMaterial} frustumCulled={false} castShadow receiveShadow />
             )}
+            
+            {/* Dark ground patches beneath grass clusters */}
+            <instancedMesh 
+                args={[patchGeometry, patchMaterial, config.clusterCount]} 
+                frustumCulled={false} 
+                receiveShadow
+            />
+            
             {/* {trackers.map((t, i) => <WheelTrail key={i} tracker={t} />)} */}
             {debugConfig.showTrackCamera && <primitive object={trackCameraHelper} />}
             

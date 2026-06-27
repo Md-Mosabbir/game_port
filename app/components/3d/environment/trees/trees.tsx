@@ -187,6 +187,7 @@ export function Trees({
         args={[canopyGeometry, canopyMat, count]}
         frustumCulled={false}
         castShadow
+        receiveShadow
       />
     </group>
   );
