@@ -1,27 +1,28 @@
-import { Sky as SkyDrei, Float, Sparkles } from '@react-three/drei';
-import { useFrame } from '@react-three/fiber';
+import { Float, Sparkles } from '@react-three/drei';
+import { useFrame, useThree } from '@react-three/fiber';
 import { useRef } from 'react';
 import * as THREE from 'three';
 import { LIGHTING_CONFIG } from '@/app/controls/lightingControls';
 
 export const Sky = () => {
-  const sunRef = useRef<THREE.Group>(null!);
+  const { scene } = useThree();
+
+  useFrame(() => {
+    // Make fog responsive to Tweakpane
+    if (scene.background instanceof THREE.Color) {
+      scene.background.set(LIGHTING_CONFIG.fogColor);
+    }
+    if (scene.fog instanceof THREE.Fog) {
+      scene.fog.color.set(LIGHTING_CONFIG.fogColor);
+      scene.fog.near = LIGHTING_CONFIG.fogNear;
+      scene.fog.far = LIGHTING_CONFIG.fogFar;
+    }
+  });
 
   return (
     <>
       <color attach="background" args={[LIGHTING_CONFIG.fogColor]} />
       <fog attach="fog" args={[LIGHTING_CONFIG.fogColor, LIGHTING_CONFIG.fogNear, LIGHTING_CONFIG.fogFar]} />
-      {/* Base Sky Component with Autumn Sunset settings */}
-      <SkyDrei
-        distance={450000}
-        sunPosition={[100, 20, -50]}
-        turbidity={8}
-        rayleigh={3}
-        mieCoefficient={0.005}
-        mieDirectionalG={0.8}
-      />
-
-    
 
       {/* Floating particles to catch the 'light' */}
       <Sparkles

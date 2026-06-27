@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MeshBasicNodeMaterial } from 'three/webgpu';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
 import {
     attribute,
     mix,
@@ -29,10 +29,12 @@ export function createCanopyMaterial(
         windSpeed?: number;
         swayIntensity?: number;
     }
-): MeshBasicNodeMaterial {
+): MeshStandardNodeMaterial {
 
-    const material = new MeshBasicNodeMaterial({
+    const material = new MeshStandardNodeMaterial({
         side: THREE.DoubleSide,
+        roughness: 0.8,
+        metalness: 0.0
     });
 
     // ─── VISIBILITY & ALPHA FIX ──────────────────────────────────────────
@@ -141,17 +143,7 @@ export function createCanopyMaterial(
     const variation = internalNoise.sub(0.5).mul(0.04);
     baseColor = baseColor.add(vec3(variation));
 
-    // ─── STYLIZED DIFFUSE LIGHTING (Ghibli Shading) ──────────────────────
-    const lightDirection = vec3(1.0, 1.0, 0.5).normalize();
-    const lightIntensity = dot(normalWorld, lightDirection);
-    
-    const wrappedLight = lightIntensity.mul(0.5).add(0.5);
-    const stylizedLight = wrappedLight.smoothstep(0.35, 0.65);
-
-    // Atmospheric cool tint for shadowed fields
-    const shadowTint = baseColor.mul(vec3(0.48, 0.52, 0.58)); 
-    
-    material.colorNode = mix(shadowTint, baseColor, stylizedLight);
+    material.colorNode = baseColor;
 
     return material;
 }

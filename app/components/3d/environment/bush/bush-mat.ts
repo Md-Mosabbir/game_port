@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MeshBasicNodeMaterial } from 'three/webgpu';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
 import {
     attribute,
     mix,
@@ -28,10 +28,12 @@ export function createBushMaterial(
     },
     noiseTex: THREE.Texture,
     alphaTex: THREE.Texture,
-): { material: MeshBasicNodeMaterial } {
+): { material: MeshStandardNodeMaterial } {
 
-    const material = new MeshBasicNodeMaterial({
+    const material = new MeshStandardNodeMaterial({
         side: THREE.DoubleSide,
+        roughness: 0.8,
+        metalness: 0.0
     });
 
     // ─── VISIBILITY & ALPHA FIX ──────────────────────────────────────────
@@ -119,16 +121,7 @@ export function createBushMaterial(
     const variation = noise.sub(0.5).mul(0.08);
     let finalColor = base.add(variation);
 
-    // ─── STYLIZED DIFFUSE LIGHTING ───────────────────────────────────────
-    const lightDirection = vec3(1.0, 1.0, 0.5).normalize();
-    const lightIntensity = dot(normalWorld, lightDirection);
-    
-    const wrappedLight = lightIntensity.mul(0.5).add(0.5);
-    const stylizedLight = wrappedLight.smoothstep(0.3, 0.7);
-
-    const shadowTint = finalColor.mul(vec3(0.5, 0.6, 0.7)); 
-    
-    material.colorNode = mix(shadowTint, finalColor, stylizedLight);
+    material.colorNode = finalColor;
 
     return { material };
 }

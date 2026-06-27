@@ -1,144 +1,159 @@
-"use client";
-import { useLayoutEffect, useRef, Suspense, useEffect, useState } from 'react';
-import { useTexture, OrbitControls } from '@react-three/drei';
+'use client';
+
 import { Canvas, useFrame } from '@react-three/fiber';
+import { OrbitControls, Stats } from '@react-three/drei';
+import { MeshStandardNodeMaterial, WebGPURenderer } from 'three/webgpu';
+import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
+import { color } from 'three/tsl';
 
-import { WebGPURenderer } from 'three/webgpu';
-import { Pane } from 'tweakpane';
-import { useStylizedBushGeometry } from '../components/3d/environment/bush/bush-geo';
-import { useBushMaterial } from '../components/3d/environment/bush/bush-mat';
-import { Bushes } from '../components/3d/environment/bush/bushes';
-import { Trees } from '../components/3d/environment/trees/trees';
+import { Sky } from '@/app/components/3d/environment/sky';
+import { WorldLighting } from '@/app/components/3d/environment/world-lighting';
+import { setupLightingControls } from '@/app/controls/lightingControls';
+import { setupPlaygroundControls, diffusionUniforms } from '@/app/controls/playgroundControls';
+import { stylizedDiffusion, stylizedBounce } from '../components/3d/stylised/stylizedMaterial';
 
+const GHIBLI_COLORS = [
+    '#9fb58b', '#5c7b64', '#d6c196', '#b46a53', '#748b9c', '#e4d5b7', '#a3b899'
+];
 
-export default function PlaygroundPage() {
-  const [config, setConfig] = useState({
-    // --- Ground Foliage Settings ---
-    count: 120,
-    planeCount: 40,
-    bushRadius: 1.2,
-    innerDensity: 1.5,
+// Single shared temporary vector to avoid memory allocation every frame
+const _lightDir = new THREE.Vector3();
 
-    // --- Tree Generation Settings ---
-    treeCount: 35,
-    treePlaneCount: 150,
-    treeBushRadius: 2.2,
+const StylizedMesh = ({ geometry, position, baseColor }: { geometry: THREE.BufferGeometry, position: [number, number, number], baseColor: string }) => {
+    const material = useMemo(() => {
+        const mat = new MeshStandardNodeMaterial({
+            roughness: 0.5,
+            metalness: 0.0
+        });
+        
+        const diffused = stylizedDiffusion(
+            color(baseColor),
+            diffusionUniforms.lightDirection,
+            diffusionUniforms.diffusionLow,
+            diffusionUniforms.diffusionHigh
+        );
 
-    // --- Global Wind Environment ---
-    windSpeed: 0.5,
-    swayIntensity: 0.25,
-  });
+        mat.colorNode = stylizedBounce(
+            diffused,
+            diffusionUniforms.bounceColor,
+            diffusionUniforms.bounceStrength,
+            diffusionUniforms.bounceLow,
+            diffusionUniforms.bounceHigh,
+            diffusionUniforms.bounceMaxDist,
+            diffusionUniforms.floorY
+        );
 
-  useEffect(() => {
-    const pane = new Pane({
-      title: 'Environment Master Panel',
-      expanded: true,
+        return mat;
+    }, [baseColor]);
+
+    return (
+        <mesh position={position} castShadow receiveShadow geometry={geometry}>
+            <primitive object={material} attach="material" />
+        </mesh>
+    );
+};
+
+const StylizedObjects = () => {
+    // 1. Keep geometries inside useMemo to preserve memory across mounts
+    const sphereGeo = useMemo(() => new THREE.SphereGeometry(2, 32, 32), []);
+    const boxGeo = useMemo(() => new THREE.BoxGeometry(3, 3, 3), []);
+    const centralBoxGeo = useMemo(() => new THREE.BoxGeometry(4, 4, 4), []);
+    const planeGeo = useMemo(() => new THREE.PlaneGeometry(100, 100), []);
+
+    // 2. Generate random positions once safely
+    const items = useMemo(() => {
+        const generated = [];
+        for (let i = 0; i < 10; i++) {
+            generated.push({
+                type: 'sphere',
+                position: [(Math.random() - 0.5) * 40, 2, (Math.random() - 0.5) * 40] as [number, number, number],
+                color: GHIBLI_COLORS[Math.floor(Math.random() * GHIBLI_COLORS.length)]
+            });
+            generated.push({
+                type: 'cube',
+                position: [(Math.random() - 0.5) * 40, 2, (Math.random() - 0.5) * 40] as [number, number, number],
+                color: GHIBLI_COLORS[Math.floor(Math.random() * GHIBLI_COLORS.length)]
+            });
+        }
+        return generated;
+    }, []);
+
+    const groundMaterial = useMemo(() => {
+        const mat = new MeshStandardNodeMaterial({ roughness: 0.8, metalness: 0.0 });
+        const diffused = stylizedDiffusion(
+            color('#4a5e42'), 
+            diffusionUniforms.lightDirection,
+            diffusionUniforms.diffusionLow,
+            diffusionUniforms.diffusionHigh
+        );
+        mat.colorNode = stylizedBounce(
+            diffused,
+            diffusionUniforms.bounceColor,
+            diffusionUniforms.bounceStrength,
+            diffusionUniforms.bounceLow,
+            diffusionUniforms.bounceHigh,
+            diffusionUniforms.bounceMaxDist,
+            diffusionUniforms.floorY
+        );
+        return mat;
+    }, []);
+
+    // 3. Centralized frame loop updates the dynamic uniform values directly on the GPU
+    useFrame((state) => {
+        const currentLight = state.scene.children.find(c => c.type === 'DirectionalLight') as THREE.DirectionalLight;
+        if (currentLight) {
+            // Read light position, normalize it to turn it into a directional vector, and inject it into TSL
+            _lightDir.copy(currentLight.position).normalize();
+            diffusionUniforms.lightDirection.value.copy(_lightDir);
+        }
     });
 
-    // --- Ground Foliage Controller Folder ---
-    const bushFolder = pane.addFolder({ title: 'Ground Bushes' });
+    return (
+        <group>
+            {/* Ground Plane */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow geometry={planeGeo}>
+                <primitive object={groundMaterial} attach="material" />
+            </mesh>
 
-    bushFolder.addBinding(config, 'count', { min: 10, max: 500, step: 10 })
-      .on('change', (ev) => setConfig((c) => ({ ...c, count: ev.value })));
+            {/* Central Box */}
+            <StylizedMesh geometry={centralBoxGeo} position={[0, 2, 0]} baseColor="#d6c196" />
 
-    bushFolder.addBinding(config, 'planeCount', { min: 5, max: 150, step: 1 })
-      .on('change', (ev) => setConfig((c) => ({ ...c, planeCount: ev.value })));
+            {/* Scattered Items */}
+            {items.map((item, i) => (
+                <StylizedMesh 
+                    key={i}
+                    geometry={item.type === 'sphere' ? sphereGeo : boxGeo}
+                    position={item.position}
+                    baseColor={item.color}
+                />
+            ))}
+        </group>
+    );
+};
 
-    bushFolder.addBinding(config, 'bushRadius', { min: 0.2, max: 4.0, step: 0.05 })
-      .on('change', (ev) => setConfig((c) => ({ ...c, bushRadius: ev.value })));
+export default function PlaygroundPage() {
+    useEffect(() => {
+        setupLightingControls();
+        setupPlaygroundControls();
+    }, []);
 
-    // --- Tree Architecture Controller Folder ---
-    const treeFolder = pane.addFolder({ title: 'Tree Systems (Re-bakes)' });
-
-    treeFolder.addBinding(config, 'treeCount', { min: 5, max: 100, step: 5 })
-      .on('change', (ev) => setConfig((c) => ({ ...c, treeCount: ev.value })));
-
-    treeFolder.addBinding(config, 'treePlaneCount', { min: 10, max: 200, step: 5 })
-      .on('change', (ev) => setConfig((c) => ({ ...c, treePlaneCount: ev.value })));
-
-    treeFolder.addBinding(config, 'treeBushRadius', { min: 0.5, max: 5.0, step: 0.1 })
-      .on('change', (ev) => setConfig((c) => ({ ...c, treeBushRadius: ev.value })));
-
-    // --- Global Environmental TSL Physics Folder ---
-    const environmentFolder = pane.addFolder({ title: 'Global Wind Node Shaders' });
-
-    environmentFolder.addBinding(config, 'windSpeed', { min: 0.0, max: 2.0, step: 0.05 })
-      .on('change', (ev) => setConfig((c) => ({ ...c, windSpeed: ev.value })));
-
-    environmentFolder.addBinding(config, 'swayIntensity', { min: 0.0, max: 1.0, step: 0.01 })
-      .on('change', (ev) => setConfig((c) => ({ ...c, swayIntensity: ev.value })));
-
-    return () => {
-      pane.dispose();
-    };
-  }, []);
-
-  return (
-    <div style={{ width: '100vw', height: '100vh', position: 'relative', background: '#1a1a2e' }}>
-      <Canvas
-        camera={{ position: [0, 15, 30], fov: 45 }}
-        shadows
-        gl={async (props) => {
-          const r = new WebGPURenderer(props);
-          return await r.init();
-        }}
-        onCreated={({ scene }) => {
-          // Creates Bruno Simon's beautiful soft-blue environment horizon color natively
-          scene.background = new THREE.Color('#b0d0ff');
-          scene.fog = new THREE.FogExp2('#b0d0ff', 0.015);
-        }}
-      >
-        {/* Crisp lighting configured to draw clean geometry shadows across standard materials */}
-        <ambientLight intensity={0.6} color="#ffffff" />
-        <directionalLight
-          position={[20, 25, 15]}
-          intensity={1.5}
-          castShadow
-          shadow-mapSize={[2048, 2048]}
-          shadow-camera-far={60}
-          shadow-camera-left={-25}
-          shadow-camera-right={25}
-          shadow-camera-top={25}
-          shadow-camera-bottom={-25}
-          shadow-bias={-0.0005}
-        />
-
-        <Suspense fallback={null}>
-          {/* Ground Foliage Layer */}
-          <Bushes
-            key={`bushes-${config.count}-${config.planeCount}-${config.bushRadius}`}
-            count={config.count}
-            planeCount={config.planeCount}
-            config={config}
-          />
-
-          {/* Tree Canopy and Trunk Layer */}
-          <Trees
-            key={`trees-${config.treeCount}-${config.treePlaneCount}-${config.treeBushRadius}`}
-            count={config.treeCount}
-            planeCount={config.treePlaneCount}
-            config={config}
-          />
-
-          {/* A gorgeous, rich ground plateau plane designed to receive crisp shadows */}
-          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
-            <planeGeometry args={[120, 120]} />
-            <meshStandardMaterial
-              color="#3a5334"
-              roughness={0.85}
-              metalness={0.05}
-            />
-          </mesh>
-        </Suspense>
-
-        <OrbitControls
-          makeDefault
-          maxPolarAngle={Math.PI / 2 - 0.05} // Locks camera from dipping underneath the floor plain
-          minDistance={5}
-          maxDistance={60}
-        />
-      </Canvas>
-    </div>
-  );
+    return (
+        <main style={{ width: '100vw', height: '100vh', background: '#000' }}>
+            <Canvas
+                shadows
+                camera={{ position: [0, 10, 30], fov: 45 }}
+                gl={async (props) => {
+                    const r = new WebGPURenderer(props);
+                    return await r.init();
+                }}
+            >
+                <Sky />
+                <WorldLighting />
+                <Stats />
+                <OrbitControls makeDefault />
+                <StylizedObjects />
+            </Canvas>
+        </main>
+    );
 }

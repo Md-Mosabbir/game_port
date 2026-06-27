@@ -14,10 +14,10 @@ import {
     mix,
     float
 } from 'three/tsl';
-import { MeshBasicNodeMaterial } from 'three/webgpu';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
 
 export function createTrunkMaterial(uniforms: any, config: any) {
-    const material = new MeshBasicNodeMaterial();
+    const material = new MeshStandardNodeMaterial({ roughness: 0.8, metalness: 0.0 });
 
     const uSpeed = uniform(config?.windSpeed ?? 0.8);
     const uIntensity = uniform(config?.swayIntensity ?? 0.08);
@@ -109,18 +109,7 @@ export function createTrunkMaterial(uniforms: any, config: any) {
     const rootOcclusion = smoothstep(0.2, 0.0, normalizedY).mul(0.6);
     finalBarkColor = mix(finalBarkColor, deepBark, rootOcclusion);
 
-    // ─── TOON LIGHTING STEP (SHARP EDGES) ───────────────────────────────
-    const lightDirection = vec3(1.0, 1.0, 0.5).normalize();
-    const lightIntensity = dot(normalWorld, lightDirection);
-
-    const wrappedLight = lightIntensity.mul(0.5).add(0.5);
-    const stylizedLight = wrappedLight.smoothstep(0.32, 0.58);
-
-    // Ambient shadow factor
-    const shadowMult = mix(vec3(0.40, 0.45, 0.55), vec3(0.55, 0.58, 0.68), selectCherry);
-    const shadowTint = finalBarkColor.mul(shadowMult);
-
-    material.colorNode = mix(shadowTint, finalBarkColor, stylizedLight);
+    material.colorNode = finalBarkColor;
 
     return material;
 }

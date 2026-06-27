@@ -3,7 +3,7 @@ import { useRef, useMemo, useState, useEffect } from 'react';
 import { useFrame, extend } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import { texture, uniform } from 'three/tsl';
-import { MeshBasicNodeMaterial } from 'three/webgpu';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
 
 import { GRASS_CONFIG, subscribeToGrassConfig, DEBUG_CONFIG } from '@/app/controls/grassControls';
 import { GRASS_SETTINGS } from './grass-config';
@@ -16,7 +16,7 @@ import { WheelTracker } from '../wheel-track';
 import { TrackDebugPlane } from './debug';
 import { AxisDiagnosticHUD, DiagnosticData } from './axis';
 
-extend({ MeshBasicNodeMaterial });
+extend({ MeshStandardNodeMaterial });
 
 export function InfiniteGrass({ chasisBodyRef }: { chasisBodyRef?: any }) {
     const [config, setConfig] = useState(() => ({ ...GRASS_CONFIG }));
