@@ -17,6 +17,7 @@ import {
 	color,
 	mx_noise_float
 } from 'three/tsl';
+import { applyFolioShading } from '../../materials/folio-shading';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // createGrassMaterial
@@ -211,6 +212,9 @@ export function createGrassMaterial(
 
 	// Set final blade color without custom lighting overrides
 	material.colorNode = bladeColor;
+
+	// Stylised diffusion + light bounce + tinted shadows + fog
+	applyFolioShading(material, { colorNode: bladeColor });
 
 
 

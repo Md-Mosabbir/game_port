@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { positionWorld, texture } from 'three/tsl';
+import { applyFolioShading } from '../materials/folio-shading';
 
 interface WorldGroundProps {
     chasisBodyRef?: React.RefObject<RapierRigidBody | null>;
@@ -54,7 +55,12 @@ export const WorldGround = ({ chasisBodyRef }: WorldGroundProps) => {
 
         if (fieldTexture) {
             const worldUV = positionWorld.xz.mul(0.05);
-            m.colorNode = texture(fieldTexture, worldUV);
+            const groundColor = texture(fieldTexture, worldUV);
+            m.colorNode = groundColor;
+
+            // Stylised diffusion + tinted shadows + fog. No light bounce: the
+            // ground is what bounces, it should not bounce onto itself.
+            applyFolioShading(m, { colorNode: groundColor, hasLightBounce: false });
         }
 
         return m;

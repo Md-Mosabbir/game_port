@@ -17,6 +17,7 @@ import {
     float,
     mx_noise_float
 } from 'three/tsl';
+import { applyFolioShading } from '../../materials/folio-shading';
 
 export function createCanopyMaterial(
     uniforms: {
@@ -144,6 +145,9 @@ export function createCanopyMaterial(
     baseColor = baseColor.add(vec3(variation));
 
     material.colorNode = baseColor;
+
+    // Stylised diffusion + light bounce + tinted shadows + fog
+    applyFolioShading(material, { colorNode: baseColor });
 
     return material;
 }

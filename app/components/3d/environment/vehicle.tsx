@@ -13,6 +13,7 @@ type KeyControls = {
 	left: boolean;
 	right: boolean;
 	brake: boolean;
+	boost: boolean;
 	reset: boolean;
 };
 
@@ -28,6 +29,7 @@ type MobileControlState = {
 	left: boolean
 	right: boolean
 	brake: boolean
+	boost: boolean
 	reset: boolean
 	axisX: number
 	axisY: number
@@ -63,10 +65,10 @@ export const Vehicle = ({ position, rotation, chasisBodyRef, mobileControls }: V
 		suspensionRestLength: 0.15 * config.scaleJeep,
 		suspensionStiffness: 40,
 		maxSuspensionTravel: 0.3 * config.scaleJeep,
-		sideFrictionStiffness: 3,
-		frictionSlip: 2.0,
+		sideFrictionStiffness: config.sideFrictionStiffness,
+		frictionSlip: config.frictionSlip,
 		radius: 0.305 * config.scaleWheel * config.scaleJeep,
-	}), [config.scaleJeep, config.scaleWheel]);
+	}), [config.scaleJeep, config.scaleWheel, config.frictionSlip, config.sideFrictionStiffness]);
 
 	// Recalculate wheels array whenever Tweakpane controls change
 	const wheels = useMemo(() => [
@@ -80,9 +82,55 @@ export const Vehicle = ({ position, rotation, chasisBodyRef, mobileControls }: V
 
 	const [smoothedCameraPosition] = useState(new THREE.Vector3(0, 10, -20));
 	const [smoothedCameraTarget] = useState(new THREE.Vector3());
+
+	// Mass properties live on the collider, and @react-three/rapier only reads
+	// them when the collider is created — so apply them imperatively to keep the
+	// Tweakpane sliders live. Driven from the frame loop rather than an effect so
+	// it still lands if the collider is not built yet on the first pass.
+	const appliedMassKey = useRef('');
+
+	// Boost meter: 1 = full, 0 = spent.
+	const boostCharge = useRef(1);
+	const boostCooldown = useRef(0);
+	// Set when the meter runs dry, so a held Shift cannot re-trigger in pulses
+	// as the charge trickles back — you have to let go first.
+	const boostLocked = useRef(false);
+
+	const applyMassProperties = () => {
+		const key = `${config.mass}|${config.centerOfMassY}|${config.rollResistance}|${config.scaleJeep}`;
+		if (key === appliedMassKey.current) return;
+
+		const collider = chasisBodyRef.current?.collider(0);
+		if (!collider) return;
+
+		// Half extents of the chassis box, matching the CuboidCollider below.
+		const hx = 1.395 * config.scaleJeep;
+		const hy = 0.805 * config.scaleJeep;
+		const hz = 0.595 * config.scaleJeep;
+
+		// Solid box inertia: I = m/12 * (sum of the squares of the other two
+		// full dimensions). Scaling the roll axis up resists tipping.
+		const k = config.mass / 12;
+		const inertia = {
+			x: k * ((2 * hy) ** 2 + (2 * hz) ** 2) * config.rollResistance,
+			y: k * ((2 * hx) ** 2 + (2 * hz) ** 2),
+			z: k * ((2 * hx) ** 2 + (2 * hy) ** 2),
+		};
+
+		collider.setMassProperties(
+			config.mass,
+			{ x: 0, y: config.centerOfMassY * config.scaleJeep, z: 0 },
+			inertia,
+			{ x: 0, y: 0, z: 0, w: 1 },
+		);
+
+		appliedMassKey.current = key;
+	};
 	
 	useFrame((state, delta) => {
 		if (!chasisMeshRef.current || !vehicleController.current || !!threeControls) return;
+
+		applyMassProperties();
 
 		const t = 1.0 - (1 - CAMERA_CONFIG.lerpSpeed) ** (delta * 60);
 		const controller = vehicleController.current;
@@ -95,12 +143,32 @@ export const Vehicle = ({ position, rotation, chasisBodyRef, mobileControls }: V
 			left: controls.left || mobileControls.left,
 			right: controls.right || mobileControls.right,
 			brake: controls.brake || mobileControls.brake,
+			boost: controls.boost || mobileControls.boost,
 			reset: controls.reset || mobileControls.reset,
 		}
 		const keyboardEngine = Number(merged.forward) - Number(merged.back);
 		const joystickEngine = mobileControls.axisY || 0;
 		const totalEngine = Math.max(-1, Math.min(1, keyboardEngine + joystickEngine));
-		const engineForce = totalEngine * config.accelerateForce;
+
+		// Boost: only forwards, only while there is charge. Held boost drains the
+		// meter; releasing it refills after a short delay.
+		if (!merged.boost) boostLocked.current = false;
+
+		const wantsBoost = merged.boost && !boostLocked.current && totalEngine > 0;
+		const boosting = wantsBoost && boostCharge.current > 0;
+
+		if (boosting) {
+			boostCharge.current = Math.max(0, boostCharge.current - delta / config.boostDuration);
+			boostCooldown.current = config.boostRechargeDelay;
+			if (boostCharge.current === 0) boostLocked.current = true;
+		} else if (boostCooldown.current > 0) {
+			boostCooldown.current = Math.max(0, boostCooldown.current - delta);
+		} else {
+			boostCharge.current = Math.min(1, boostCharge.current + (delta * config.boostRecharge) / config.boostDuration);
+		}
+
+		const boostFactor = boosting ? config.boostMultiplier : 1;
+		const engineForce = totalEngine * config.accelerateForce * boostFactor;
 		controller.setWheelEngineForce(0, engineForce);
 		controller.setWheelEngineForce(1, engineForce);
 
@@ -111,7 +179,18 @@ export const Vehicle = ({ position, rotation, chasisBodyRef, mobileControls }: V
 		const keyboardSteer = Number(merged.left) - Number(merged.right);
 		const joystickSteer = -(mobileControls.axisX || 0); // Negative because Left is +1
 		const steerDirection = Math.max(-1, Math.min(1, keyboardSteer + joystickSteer));
-		const steering = THREE.MathUtils.lerp(currentSteering, config.steerAngle * steerDirection, 0.1);
+
+		// Steering falls off with speed: full lock while crawling, a fraction of
+		// it at speed, so a hard input cannot snap the back end round.
+		const velocity = chassisRigidBody.linvel();
+		const speed = Math.hypot(velocity.x, velocity.y, velocity.z);
+		const speedRatio = THREE.MathUtils.clamp(speed / config.steerFalloffSpeed, 0, 1);
+		const maxSteer = config.steerAngle * THREE.MathUtils.lerp(1, config.steerAtTopSpeed, speedRatio);
+
+		// Framerate-independent smoothing — a flat 0.1 per frame steers twice as
+		// fast at 144Hz as it does at 60Hz.
+		const steerT = 1.0 - 0.9 ** (delta * 60);
+		const steering = THREE.MathUtils.lerp(currentSteering, maxSteer * steerDirection, steerT);
 		controller.setWheelSteering(0, steering);
 		controller.setWheelSteering(1, steering);
 
@@ -172,9 +251,9 @@ export const Vehicle = ({ position, rotation, chasisBodyRef, mobileControls }: V
 			colliders={false}
 			position={position}
 			rotation={rotation}
-			mass={1200}
 			canSleep={false}
-		
+			linearDamping={config.linearDamping}
+			angularDamping={config.angularDamping}
 		>
 			<CuboidCollider args={[1.395 * config.scaleJeep, 0.805 * config.scaleJeep, 0.595 * config.scaleJeep]} />
 

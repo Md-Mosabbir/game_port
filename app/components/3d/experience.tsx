@@ -10,6 +10,7 @@ import { InfiniteGrass } from './environment/grass/grass';
 import { Trees } from './environment/trees/trees';
 import { Bushes } from './environment/bush/bushes';
 import { Sky } from './environment/sky';
+import { DayCycle } from './environment/day-cycle';
 import { WorldGround } from './environment/world-ground';
 import { WorldLighting } from './environment/world-lighting';
 import { initializeWorldControls } from '@/app/controls';
@@ -31,19 +32,20 @@ const controls = [
 	{ name: 'left', keys: ['ArrowLeft', 'KeyA'] },
 	{ name: 'right', keys: ['ArrowRight', 'KeyD'] },
 	{ name: 'brake', keys: ['Space'] },
+	{ name: 'boost', keys: ['ShiftLeft', 'ShiftRight'] },
 	{ name: 'reset', keys: ['KeyR'] },
 ];
 type ControlState = {
 	forward: boolean; back: boolean
 	left: boolean; right: boolean
-	brake: boolean; reset: boolean
+	brake: boolean; boost: boolean; reset: boolean
 	axisX: number; axisY: number
 }
 
 const initialControls: ControlState = {
 	forward: false, back: false,
 	left: false, right: false,
-	brake: false, reset: false,
+	brake: false, boost: false, reset: false,
 	axisX: 0, axisY: 0
 }
 
@@ -115,6 +117,7 @@ export function Sketch() {
 				}
 			>
 
+				<DayCycle />
 				<Sky />
 				<OriginMarker />
 				<Stats />

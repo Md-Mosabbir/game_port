@@ -16,6 +16,7 @@ import {
     texture,
     float // Added float import for math inversion
 } from 'three/tsl';
+import { applyFolioShading } from '../../materials/folio-shading';
 
 /**
  * createBushMaterial
@@ -122,6 +123,9 @@ export function createBushMaterial(
     let finalColor = base.add(variation);
 
     material.colorNode = finalColor;
+
+    // Stylised diffusion + light bounce + tinted shadows + fog
+    applyFolioShading(material, { colorNode: finalColor });
 
     return { material };
 }

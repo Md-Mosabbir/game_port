@@ -8,6 +8,7 @@ type ControlState = {
   left: boolean
   right: boolean
   brake: boolean
+  boost: boolean
   reset: boolean
   axisX: number
   axisY: number
@@ -25,6 +26,7 @@ const initialState: ControlState = {
   left: false,
   right: false,
   brake: false,
+  boost: false,
   reset: false,
   axisX: 0,
   axisY: 0
@@ -155,13 +157,14 @@ export const MobileControls = ({ onChange }: Props) => {
         />
       </div>
 
-      {/* Right side — brake + reset */}
+      {/* Right side — boost + brake + reset */}
       <div style={{
         display: 'flex',
         flexDirection: 'column',
         gap: 8,
         pointerEvents: 'all',
       }}>
+        {btn('boost', '⇧')}
         {btn('brake', 'B')}
         {btn('reset', 'R')}
       </div>

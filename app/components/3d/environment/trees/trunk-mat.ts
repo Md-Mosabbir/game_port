@@ -15,6 +15,7 @@ import {
     float
 } from 'three/tsl';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
+import { applyFolioShading } from '../../materials/folio-shading';
 
 export function createTrunkMaterial(uniforms: any, config: any) {
     const material = new MeshStandardNodeMaterial({ roughness: 0.8, metalness: 0.0 });
@@ -110,6 +111,9 @@ export function createTrunkMaterial(uniforms: any, config: any) {
     finalBarkColor = mix(finalBarkColor, deepBark, rootOcclusion);
 
     material.colorNode = finalBarkColor;
+
+    // Stylised diffusion + light bounce + tinted shadows + fog
+    applyFolioShading(material, { colorNode: finalBarkColor });
 
     return material;
 }

@@ -288,7 +288,10 @@ trackCamera.updateMatrixWorld(true);
     return (
         <>
             {grassMaterial && (
-                <mesh geometry={geometry} material={grassMaterial} frustumCulled={false} castShadow receiveShadow />
+                // No castShadow: blades are thinner than a shadow texel, so they
+                // only add sparkle to the shadow map (and cost a full extra pass).
+                // The core shadow term shades them instead.
+                <mesh geometry={geometry} material={grassMaterial} frustumCulled={false} receiveShadow />
             )}
             
             {/* Dark ground patches beneath grass clusters */}

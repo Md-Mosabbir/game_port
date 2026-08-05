@@ -4,8 +4,8 @@ import { uniform } from 'three/tsl';
 
 export const FOG_CONFIG = {
 	// Radial background gradient
-	colorA: '#f8ead2',
-	colorB: '#7fa6cc',
+	colorA: '#ffd7a3',
+	colorB: '#5fb3cf',
 	radialCenter: { x: 0.5, y: 0.0 },
 	radialStart: 0.0,
 	radialEnd: 1.0,
@@ -32,10 +32,12 @@ export const setupFogControls = () => {
 
 	const folder = addFolder('Fog');
 	if (folder) {
-		folder.addBinding(FOG_CONFIG, 'colorA', { label: 'Color A' }).on('change', (ev) => {
+		// The day cycle overwrites these colours while it is enabled — retune the
+		// per-preset colours in the Day Cycles folder instead.
+		folder.addBinding(FOG_CONFIG, 'colorA', { label: 'Color A (manual)' }).on('change', (ev) => {
 			fogUniforms.colorA.value.set(ev.value);
 		});
-		folder.addBinding(FOG_CONFIG, 'colorB', { label: 'Color B' }).on('change', (ev) => {
+		folder.addBinding(FOG_CONFIG, 'colorB', { label: 'Color B (manual)' }).on('change', (ev) => {
 			fogUniforms.colorB.value.set(ev.value);
 		});
 		folder.addBinding(FOG_CONFIG, 'radialCenter', {
@@ -51,6 +53,8 @@ export const setupFogControls = () => {
 		folder.addBinding(FOG_CONFIG, 'radialEnd', { min: 0, max: 2, step: 0.01, label: 'Gradient End' }).on('change', (ev) => {
 			fogUniforms.radialEnd.value = ev.value;
 		});
+		// Base range. With the day cycle on, the per-preset near/far ratios are
+		// remapped into this range instead of being used directly.
 		folder.addBinding(FOG_CONFIG, 'near', { min: 0, max: 400, step: 1 }).on('change', (ev) => {
 			fogUniforms.near.value = ev.value;
 		});
