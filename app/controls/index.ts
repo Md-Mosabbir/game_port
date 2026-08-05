@@ -5,6 +5,7 @@ import { setupLightingControls } from './lightingControls';
 import { setupRoadControls } from './roadControls';
 import { setupEnvironmentControls } from './environmentControls';
 import { setupFoliageControls } from './foliageControls';
+import { setupFogControls } from './fogControls';
 
 let initialized = false;
 
@@ -17,5 +18,6 @@ export const initializeWorldControls = () => {
 	setupJeepControls();
 	setupEnvironmentControls();
 	setupFoliageControls();
+	setupFogControls();
 	initialized = true;
 };

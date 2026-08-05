@@ -1,9 +1,6 @@
 import { addFolder } from './pane';
 
 export const LIGHTING_CONFIG = {
-	fogNear: 40,
-	fogFar: 180,
-	fogColor: '#f8ead2',
 	gammaEnabled: true,
 	exposure: 1.1,
 	
@@ -35,9 +32,6 @@ export const setupLightingControls = () => {
 	// Environment folder
 	const envFolder = addFolder('Environment');
 	if (envFolder) {
-		envFolder.addBinding(LIGHTING_CONFIG, 'fogNear', { min: 10, max: 220, step: 1 });
-		envFolder.addBinding(LIGHTING_CONFIG, 'fogFar', { min: 40, max: 420, step: 1 });
-		envFolder.addBinding(LIGHTING_CONFIG, 'fogColor');
 		envFolder.addBinding(LIGHTING_CONFIG, 'gammaEnabled');
 		envFolder.addBinding(LIGHTING_CONFIG, 'exposure', { min: 0.6, max: 1.6, step: 0.01 });
 	}
