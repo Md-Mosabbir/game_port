@@ -4,6 +4,7 @@ import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { RigidBody, RapierRigidBody } from '@react-three/rapier';
 import { GRASS_SETTINGS } from '../grass/grass-config';
+import { getTerrainHeight } from '@/app/systems/terrain';
 
 // ─── Obstacle Definition & Config ─────────────────────────────────────────────
 
@@ -74,7 +75,10 @@ function ObstacleInstance({ config, carBodyRef }: ObstacleInstanceProps) {
 		else if (dz > half) { newZ -= GRASS_SETTINGS.FIELD_SIZE; wrapped = true; }
 
 		if (wrapped) {
-			body.setTranslation({ x: newX, y: ny, z: newZ }, true);
+			// Re-seat on the terrain: keeping the old Y would leave it buried in a
+			// hill or hanging in the air over a valley.
+			const newY = getTerrainHeight(newX, newZ) + config.basePosition.y;
+			body.setTranslation({ x: newX, y: newY, z: newZ }, true);
 			if (config.isDynamic) {
 				body.setLinvel({ x: 0, y: 0, z: 0 }, true);
 				body.setAngvel({ x: 0, y: 0, z: 0 }, true);
@@ -86,7 +90,11 @@ function ObstacleInstance({ config, carBodyRef }: ObstacleInstanceProps) {
 		<RigidBody
 			ref={rigidBodyRef}
 			type={config.isDynamic ? 'dynamic' : 'fixed'}
-			position={[config.basePosition.x, config.basePosition.y, config.basePosition.z]}
+			position={[
+				config.basePosition.x,
+				getTerrainHeight(config.basePosition.x, config.basePosition.z) + config.basePosition.y,
+				config.basePosition.z,
+			]}
 			rotation={[config.rotation.x, config.rotation.y, config.rotation.z]}
 			mass={config.mass}
 			colliders={config.type === 'sphere' ? 'ball' : 'hull'}
@@ -120,8 +128,9 @@ export function ObstacleManager({ carBodyRef, count = 30 }: ObstacleManagerProps
 		for (let i = 0; i < count; i++) {
 			const s = i * 137.508; // golden-angle seed spread
 
-			const isRock    = rnd(s + 1) > 0.35; // 65% rocks, 35% spheres
-			const isDynamic = !isRock;             // spheres roll, rocks stay
+			// Rocks only — the rolling spheres are gone.
+			const isRock    = true;
+			const isDynamic = false;
 
 			const posX = (rnd(s + 2) - 0.5) * F;
 			const posZ = (rnd(s + 3) - 0.5) * F;

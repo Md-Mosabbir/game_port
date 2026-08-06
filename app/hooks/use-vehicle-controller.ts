@@ -14,6 +14,8 @@ export type WheelInfo = {
 	suspensionRestLength: number;
 	suspensionStiffness: number;
 	maxSuspensionTravel: number;
+	suspensionCompression: number;
+	suspensionRelaxation: number;
 	frictionSlip: number;
 	sideFrictionStiffness: number;
 	position: THREE.Vector3;
@@ -44,6 +46,8 @@ export const useVehicleController = (
 			vehicle.addWheel(wheel.position, suspensionDirection, wheel.axleCs, wheel.suspensionRestLength, wheel.radius);
 			vehicle.setWheelSuspensionStiffness(index, wheel.suspensionStiffness);
 			vehicle.setWheelMaxSuspensionTravel(index, wheel.maxSuspensionTravel);
+		vehicle.setWheelSuspensionCompression(index, wheel.suspensionCompression);
+		vehicle.setWheelSuspensionRelaxation(index, wheel.suspensionRelaxation);
 			vehicle.setWheelFrictionSlip(index, wheel.frictionSlip);
 			vehicle.setWheelSideFrictionStiffness(index, wheel.sideFrictionStiffness);
 		}

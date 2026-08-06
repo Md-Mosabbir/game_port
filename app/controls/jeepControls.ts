@@ -4,10 +4,13 @@ export const JEEP_CONFIG = {
     // Wheel offsets (physics placement)
     frontBack: 0.85,
     upDown: -0.5,
-    width: 0.63,
+    width: 0.70, // Wider stance: track width is half of the rollover equation
     
     // Vehicle Physics
-    accelerateForce: 15,
+    // Four wheel drive: on rough ground a wheel is often unloaded or airborne,
+    // and driving only one axle means losing traction every time that happens.
+    fourWheelDrive: true,
+    accelerateForce: 22,
     brakeForce: 0.6,
     steerAngle: Math.PI / 8,
 
@@ -18,8 +21,20 @@ export const JEEP_CONFIG = {
     boostRecharge: 1.6,   // seconds of charge gained per second released
     boostRechargeDelay: 0.6, // seconds after releasing before it refills
 
+    // Suspension. Longer travel keeps the tyres on the ground over bumps, which
+    // matters far more for climbing than raw power does.
+    suspensionRestLength: 0.25,
+    suspensionStiffness: 40,
+    maxSuspensionTravel: 0.5,
+    suspensionCompression: 0.82,
+    suspensionRelaxation: 0.88,
+
     // Grip — how hard the tyres hold before letting go.
-    frictionSlip: 5.0,
+    // Deliberately set BELOW the rollover threshold (see centerOfMassY): with a
+    // half-track of 0.70 and the centre of mass 0.255 above the contact patch,
+    // the body tips at about 2.7g, so tyres that grip harder than that would
+    // flip the jeep instead of sliding. 5.0 was doing exactly that.
+    frictionSlip: 2.6,
     sideFrictionStiffness: 8.0,
 
     // Steering falls off with speed so full lock at speed cannot spin the car.
@@ -31,12 +46,18 @@ export const JEEP_CONFIG = {
     // Default matches the old implicit value (density 1 x box volume) so
     // acceleration feel is unchanged.
     mass: 5.35,
-    centerOfMassY: -0.55, // Below the box centre: the main anti-roll fix
-    rollResistance: 2.0,  // Multiplier on the roll axis inertia
+    centerOfMassY: -0.8, // Down at axle level: the main anti-roll fix
+    rollResistance: 3.0,  // Multiplier on the roll axis inertia
 
     // Damping calms roll oscillation and yaw spin-out.
     linearDamping: 0.05,
-    angularDamping: 0.5,
+    angularDamping: 0.9,
+
+    // Self-righting assist. Applies a gentle torque toward upright once tilted
+    // past the threshold, so a bad landing leans and recovers instead of
+    // flipping. 0 disables it and leaves the physics honest.
+    uprightAssist: 0.6,
+    uprightThreshold: 0.35, // radians of tilt before it starts helping
 
     // Scale
     scaleJeep: 1,
@@ -79,7 +100,8 @@ export const setupJeepControls = () => {
     wheelFolder.addBinding(JEEP_CONFIG, 'width', { min: 0.2, max: 1.5, step: 0.01 }).on('change', notify);
 
     const physicsFolder = folder.addFolder({ title: 'Vehicle Physics' });
-    physicsFolder.addBinding(JEEP_CONFIG, 'accelerateForce', { min: 0, max: 30 }).on('change', notify);
+    physicsFolder.addBinding(JEEP_CONFIG, 'fourWheelDrive', { label: '4WD' }).on('change', notify);
+    physicsFolder.addBinding(JEEP_CONFIG, 'accelerateForce', { min: 0, max: 80 }).on('change', notify);
     physicsFolder.addBinding(JEEP_CONFIG, 'brakeForce', { min: 0, max: 2.0, step: 0.01 }).on('change', notify);
     physicsFolder.addBinding(JEEP_CONFIG, 'steerAngle', { min: 0, max: Math.PI / 4 }).on('change', notify);
 
@@ -88,6 +110,13 @@ export const setupJeepControls = () => {
     boostFolder.addBinding(JEEP_CONFIG, 'boostDuration', { min: 0.2, max: 15, step: 0.1, label: 'duration (s)' }).on('change', notify);
     boostFolder.addBinding(JEEP_CONFIG, 'boostRecharge', { min: 0.05, max: 5, step: 0.05, label: 'recharge/s' }).on('change', notify);
     boostFolder.addBinding(JEEP_CONFIG, 'boostRechargeDelay', { min: 0, max: 5, step: 0.05, label: 'recharge delay' }).on('change', notify);
+
+    const suspFolder = folder.addFolder({ title: 'Suspension' });
+    suspFolder.addBinding(JEEP_CONFIG, 'suspensionRestLength', { min: 0.05, max: 1, step: 0.01, label: 'rest length' }).on('change', notify);
+    suspFolder.addBinding(JEEP_CONFIG, 'suspensionStiffness', { min: 5, max: 120, step: 1, label: 'stiffness' }).on('change', notify);
+    suspFolder.addBinding(JEEP_CONFIG, 'maxSuspensionTravel', { min: 0.05, max: 1.5, step: 0.01, label: 'travel' }).on('change', notify);
+    suspFolder.addBinding(JEEP_CONFIG, 'suspensionCompression', { min: 0, max: 3, step: 0.01, label: 'compression damping' }).on('change', notify);
+    suspFolder.addBinding(JEEP_CONFIG, 'suspensionRelaxation', { min: 0, max: 3, step: 0.01, label: 'rebound damping' }).on('change', notify);
 
     const gripFolder = folder.addFolder({ title: 'Grip & Stability' });
     gripFolder.addBinding(JEEP_CONFIG, 'frictionSlip', { min: 0.5, max: 15, step: 0.1 }).on('change', notify);
@@ -99,6 +128,8 @@ export const setupJeepControls = () => {
     gripFolder.addBinding(JEEP_CONFIG, 'rollResistance', { min: 0.5, max: 8, step: 0.05 }).on('change', notify);
     gripFolder.addBinding(JEEP_CONFIG, 'linearDamping', { min: 0, max: 2, step: 0.01 }).on('change', notify);
     gripFolder.addBinding(JEEP_CONFIG, 'angularDamping', { min: 0, max: 4, step: 0.01 }).on('change', notify);
+    gripFolder.addBinding(JEEP_CONFIG, 'uprightAssist', { min: 0, max: 3, step: 0.01, label: 'self-righting' }).on('change', notify);
+    gripFolder.addBinding(JEEP_CONFIG, 'uprightThreshold', { min: 0, max: 1.5, step: 0.01, label: 'righting starts at' }).on('change', notify);
 
     const scaleFolder = folder.addFolder({ title: 'Scale' });
     scaleFolder.addBinding(JEEP_CONFIG, 'scaleJeep', { min: 0.1, max: 5, step: 0.01 }).on('change', notify);

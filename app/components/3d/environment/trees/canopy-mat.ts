@@ -8,6 +8,7 @@ import {
     sin,
     smoothstep,
     time,
+    vec2,
     uniform,
     uv,
     vec3,
@@ -18,6 +19,8 @@ import {
     mx_noise_float
 } from 'three/tsl';
 import { applyFolioShading } from '../../materials/folio-shading';
+import { terrainHeightNode } from '@/app/systems/terrain';
+import { vegetationMaskNode } from '@/app/systems/vegetation';
 
 export function createCanopyMaterial(
     uniforms: {
@@ -78,9 +81,18 @@ export function createCanopyMaterial(
 
     const liftAmount = 5.0; 
 
+    // ─── TERRAIN ─────────────────────────────────────────────────────────
+    // Sit on the ground, and shrink away where trees should not grow. The
+    // instance matrix adds aSpawnLift after this node runs, so that part of the
+    // height is scaled here by hand.
+    const spawnXZ2 = vec2(wrappedX, wrappedZ);
+    const groundY = terrainHeightNode(spawnXZ2);
+    const growth = vegetationMaskNode(spawnXZ2, groundY);
+    const aSpawnLift = attribute('aSpawnLift', 'float');
+
     material.positionNode = vec3(
         positionLocal.x.add(swayX).add(wrappedX),
-        positionLocal.y.add(liftAmount),
+        positionLocal.y.add(liftAmount).mul(growth).sub(aSpawnLift.mul(growth.oneMinus())).add(groundY),
         positionLocal.z.add(swayZ).add(wrappedZ)
     );
 

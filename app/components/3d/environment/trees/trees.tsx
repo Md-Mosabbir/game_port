@@ -142,12 +142,17 @@ export function Trees({
     if (!trunkRef.current || !canopyRef.current) return;
 
     const spawnXZ = new Float32Array(count * 2);
+    // The canopy's lift lives in the instance matrix, which is applied after the
+    // position node. The shader needs to know it to scale the whole tree down on
+    // ground too steep to grow on.
+    const spawnLift = new Float32Array(count);
 
     for (let i = 0; i < count; i++) {
       const d = spawnData[i];
 
       spawnXZ[i * 2] = d.x;
       spawnXZ[i * 2 + 1] = d.z;
+      spawnLift[i] = d.height;
 
       // Unified Trunk Matrix Mapping
       dummy.position.set(0, 0, 0); 
@@ -169,6 +174,8 @@ export function Trees({
 
     canopyGeometry.setAttribute('aSpawnXZ', new THREE.InstancedBufferAttribute(spawnXZ, 2));
     mergedTrunkGeometry.setAttribute('aSpawnXZ', new THREE.InstancedBufferAttribute(spawnXZ, 2));
+    canopyGeometry.setAttribute('aSpawnLift', new THREE.InstancedBufferAttribute(spawnLift, 1));
+    mergedTrunkGeometry.setAttribute('aSpawnLift', new THREE.InstancedBufferAttribute(spawnLift, 1));
     
   }, [spawnData, canopyGeometry, mergedTrunkGeometry]);
 

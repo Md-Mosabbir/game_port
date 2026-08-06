@@ -3,7 +3,9 @@ import { useRef, useMemo, useState, useEffect } from 'react';
 import { useFrame, extend } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import { MeshStandardNodeMaterial, MeshBasicNodeMaterial } from 'three/webgpu';
-import { attribute, mod, positionLocal, vec3, vec4, uv, float, texture, uniform, color } from 'three/tsl';
+import { attribute, mod, positionLocal, vec2, vec3, vec4, uv, float, texture, uniform, color } from 'three/tsl';
+import { terrainHeightNode } from '@/app/systems/terrain';
+import { vegetationMaskNode } from '@/app/systems/vegetation';
 
 import { GRASS_CONFIG, subscribeToGrassConfig, DEBUG_CONFIG } from '@/app/controls/grassControls';
 import { GRASS_SETTINGS } from './grass-config';
@@ -116,10 +118,16 @@ export function InfiniteGrass({ chasisBodyRef }: { chasisBodyRef?: any }) {
             uniforms.fieldSize
         ).sub(halfField).add(uniforms.cameraXZ.y);
 
+        // Patches lie on the terrain, and vanish where grass does.
+        const patchXZ = vec2(wrappedX, wrappedZ);
+        const patchGroundY = terrainHeightNode(patchXZ);
+        const patchMask = vegetationMaskNode(patchXZ, patchGroundY);
+        const patchSpread = float(config.clusterSpread * 2.5).mul(patchMask);
+
         mat.positionNode = vec3(
-            positionLocal.x.mul(config.clusterSpread * 2.5).add(wrappedX),
-            positionLocal.y.add(0.05), // Slightly above the main ground
-            positionLocal.z.mul(config.clusterSpread * 2.5).add(wrappedZ)
+            positionLocal.x.mul(patchSpread).add(wrappedX),
+            positionLocal.y.add(patchGroundY).add(0.05), // Slightly above the ground
+            positionLocal.z.mul(patchSpread).add(wrappedZ)
         );
 
         // Soft circular fade out

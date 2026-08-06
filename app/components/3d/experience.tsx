@@ -11,18 +11,21 @@ import { Trees } from './environment/trees/trees';
 import { Bushes } from './environment/bush/bushes';
 import { Sky } from './environment/sky';
 import { DayCycle } from './environment/day-cycle';
+import { Water } from './environment/water';
+import { Collectibles } from './environment/collectibles';
+import { HUD } from '../HUD';
 import { WorldGround } from './environment/world-ground';
 import { WorldLighting } from './environment/world-lighting';
 import { initializeWorldControls } from '@/app/controls';
 import { ENV_CONFIG, subscribeToEnvConfig } from '@/app/controls/environmentControls';
 import { FOLIAGE_CONFIG, subscribeToFoliageConfig } from '@/app/controls/foliageControls';
-import { GRASS_SETTINGS } from './environment/grass/grass-config';
 import { WebGPURenderer } from 'three/webgpu';
 import { Vehicle } from './environment/vehicle';
 import { ObstacleManager } from './environment/collision/obstacle';
 
 const spawn = {
-	position: [0, 1.5, 0] as THREE.Vector3Tuple,
+	// Y is clearance above the terrain, not an absolute height.
+	position: [0, 2.5, 0] as THREE.Vector3Tuple,
 	rotation: [0, 0, 0] as THREE.Vector3Tuple,
 };
 
@@ -50,34 +53,6 @@ const initialControls: ControlState = {
 }
 
 
-function OriginMarker() {
-    return (
-        <group position={[0, 0, 0]}>
-            {/* The Vertical Magenta Pillar you already had */}
-            <mesh position={[0, 25, 0]}>
-                <cylinderGeometry args={[0.1, 0.1, 50, 32]} />
-                <meshStandardMaterial color="#ff00ff" emissive="#ff00ff" emissiveIntensity={2} />
-            </mesh>
-
-            {/* THICK AXIS BEAMS */}
-            {/* X - Red */}
-            <mesh rotation={[0, 0, Math.PI / 2]} position={[250, 0, 0]}>
-                <cylinderGeometry args={[0.05, 0.05, 500]} />
-                <meshBasicMaterial color="red" />
-            </mesh>
-            {/* Z - Blue */}
-            <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 250]}>
-                <cylinderGeometry args={[0.05, 0.05, 500]} />
-                <meshBasicMaterial color="blue" />
-            </mesh>
-
-            <mesh rotation={[Math.PI / 2, 0, 0]}>
-                <ringGeometry args={[5, 6, 64]} />
-                <meshBasicMaterial color="#ff00ff" side={THREE.DoubleSide} />
-            </mesh>
-        </group>
-    );
-}
 
 
 export function Sketch() {
@@ -119,7 +94,6 @@ export function Sketch() {
 
 				<DayCycle />
 				<Sky />
-				<OriginMarker />
 				<Stats />
 	
 				<Physics debug={envConfig.physicsDebug} >
@@ -129,6 +103,8 @@ export function Sketch() {
 					<WorldGround chasisBodyRef={chasisBodyRef} />
 					<ObstacleManager carBodyRef={chasisBodyRef} />
 				</Physics>
+				<Water />
+				<Collectibles carBodyRef={chasisBodyRef} />
 				<WorldLighting />
 				{envConfig.orbitControls && <OrbitControls makeDefault />}
 				{envConfig.orbitControls && <gridHelper args={[100, 100, "#ff0000", "#00ff00"]} position={[0,0,0]} />}
@@ -142,7 +118,7 @@ export function Sketch() {
 					planeCount={foliageConfig.bushPlaneCount} 
 					config={foliageConfig}                  
 					chasisBodyRef={chasisBodyRef}
-					fieldSize={GRASS_SETTINGS.FIELD_SIZE}
+					fieldSize={foliageConfig.foliageFieldSize}
 				/>
 			
 			
@@ -151,11 +127,12 @@ export function Sketch() {
 					planeCount={foliageConfig.treePlaneCount} 
 					config={foliageConfig}
 					chasisBodyRef={chasisBodyRef}
-					fieldSize={GRASS_SETTINGS.FIELD_SIZE}
+					fieldSize={foliageConfig.foliageFieldSize}
 				/>
 		
 			</Canvas>
 
+			<HUD />
 			<MobileControls onChange={setMobileControls} />
 		</>
 	);

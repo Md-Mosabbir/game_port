@@ -6,6 +6,9 @@ import { CuboidCollider, type RapierRigidBody, RigidBody, useRapier } from '@rea
 import { type RefObject, useRef, useState, useMemo, useEffect } from 'react';
 import * as THREE from 'three';
 import { JEEP_CONFIG, subscribeToJeepConfig } from '@/app/controls/jeepControls';
+import { getSpawnHeight, getTerrainHeight } from '@/app/systems/terrain';
+import { WATER_CONFIG } from '@/app/controls/waterControls';
+import { GAME_STATE, addScore, announce } from '@/app/systems/game-state';
 
 type KeyControls = {
 	forward: boolean;
@@ -38,6 +41,8 @@ type MobileControlState = {
 const _bodyPosition = new THREE.Vector3();
 const _cameraPosition = new THREE.Vector3();
 const _cameraTarget = new THREE.Vector3();
+const _worldUp = new THREE.Vector3(0, 1, 0);
+const _uprightAxis = new THREE.Vector3();
 
 export const Vehicle = ({ position, rotation, chasisBodyRef, mobileControls }: VehicleProps) => {
 	const chassisGltf = useGLTF('/car_chassis.glb');
@@ -62,13 +67,19 @@ export const Vehicle = ({ position, rotation, chasisBodyRef, mobileControls }: V
 	// Dynamic Wheel Info based on Tweakpane config
 	const wheelInfoBase: Omit<WheelInfo, 'position'> = useMemo(() => ({
 		axleCs: new THREE.Vector3(0, 0, -1),
-		suspensionRestLength: 0.15 * config.scaleJeep,
-		suspensionStiffness: 40,
-		maxSuspensionTravel: 0.3 * config.scaleJeep,
+		suspensionRestLength: config.suspensionRestLength * config.scaleJeep,
+		suspensionStiffness: config.suspensionStiffness,
+		maxSuspensionTravel: config.maxSuspensionTravel * config.scaleJeep,
+		suspensionCompression: config.suspensionCompression,
+		suspensionRelaxation: config.suspensionRelaxation,
 		sideFrictionStiffness: config.sideFrictionStiffness,
 		frictionSlip: config.frictionSlip,
 		radius: 0.305 * config.scaleWheel * config.scaleJeep,
-	}), [config.scaleJeep, config.scaleWheel, config.frictionSlip, config.sideFrictionStiffness]);
+	}), [
+		config.scaleJeep, config.scaleWheel, config.frictionSlip, config.sideFrictionStiffness,
+		config.suspensionRestLength, config.suspensionStiffness, config.maxSuspensionTravel,
+		config.suspensionCompression, config.suspensionRelaxation,
+	]);
 
 	// Recalculate wheels array whenever Tweakpane controls change
 	const wheels = useMemo(() => [
@@ -79,6 +90,13 @@ export const Vehicle = ({ position, rotation, chasisBodyRef, mobileControls }: V
 	], [wheelInfoBase, config.frontBack, config.upDown, config.width, config.scaleJeep]);
 
 	const { vehicleController } = useVehicleController(chasisBodyRef, wheelsRef as RefObject<THREE.Object3D[]>, wheels);
+
+	// `position[1]` is treated as clearance above the ground, not an absolute
+	// height — the terrain decides the rest.
+	const spawnPosition = useMemo<THREE.Vector3Tuple>(
+		() => [position[0], getSpawnHeight(position[0], position[2]) + position[1], position[2]],
+		[position]
+	);
 
 	const [smoothedCameraPosition] = useState(new THREE.Vector3(0, 10, -20));
 	const [smoothedCameraTarget] = useState(new THREE.Vector3());
@@ -95,6 +113,9 @@ export const Vehicle = ({ position, rotation, chasisBodyRef, mobileControls }: V
 	// Set when the meter runs dry, so a held Shift cannot re-trigger in pulses
 	// as the charge trickles back — you have to let go first.
 	const boostLocked = useRef(false);
+
+	// Air time, for the stunt scoring.
+	const airTime = useRef(0);
 
 	const applyMassProperties = () => {
 		const key = `${config.mass}|${config.centerOfMassY}|${config.rollResistance}|${config.scaleJeep}`;
@@ -167,10 +188,28 @@ export const Vehicle = ({ position, rotation, chasisBodyRef, mobileControls }: V
 			boostCharge.current = Math.min(1, boostCharge.current + (delta * config.boostRecharge) / config.boostDuration);
 		}
 
+		// ── Water ────────────────────────────────────────────────────────────
+		const chassisPos = chassisRigidBody.translation();
+		const inWater = chassisPos.y < WATER_CONFIG.level + 0.4;
+
+		if (inWater) {
+			// Bleed off momentum rather than blocking movement, so water slows
+			// you to a wallow instead of stopping you dead.
+			const velocity = chassisRigidBody.linvel();
+			const drag = WATER_CONFIG.drag ** (delta * 60);
+			chassisRigidBody.setLinvel(
+				{ x: velocity.x * drag, y: velocity.y * drag, z: velocity.z * drag },
+				true
+			);
+		}
+
 		const boostFactor = boosting ? config.boostMultiplier : 1;
-		const engineForce = totalEngine * config.accelerateForce * boostFactor;
-		controller.setWheelEngineForce(0, engineForce);
-		controller.setWheelEngineForce(1, engineForce);
+		const waterFactor = inWater ? WATER_CONFIG.powerFactor : 1;
+		const engineForce = totalEngine * config.accelerateForce * boostFactor * waterFactor;
+		const drivenWheels = config.fourWheelDrive ? [0, 1, 2, 3] : [0, 1];
+		[0, 1, 2, 3].forEach((i) => {
+			controller.setWheelEngineForce(i, drivenWheels.includes(i) ? engineForce : 0);
+		});
 
 		const wheelBrake = Number(merged.brake) * config.brakeForce;
 		[0, 1, 2, 3].forEach((i) => controller.setWheelBrake(i, wheelBrake));
@@ -196,7 +235,9 @@ export const Vehicle = ({ position, rotation, chasisBodyRef, mobileControls }: V
 
 		// 1. Manual Reset (R key): Return to original spawn completely
 		if (merged.reset) {
-			chassisRigidBody.setTranslation(new rapier.Vector3(...position), true);
+			// Drop in above the terrain rather than the old fixed height.
+			const spawnY = getSpawnHeight(position[0], position[2]) + position[1];
+			chassisRigidBody.setTranslation(new rapier.Vector3(position[0], spawnY, position[2]), true);
 			chassisRigidBody.setRotation(new THREE.Quaternion().setFromEuler(new THREE.Euler(...rotation)), true);
 			chassisRigidBody.setLinvel(new rapier.Vector3(0, 0, 0), true);
 			chassisRigidBody.setAngvel(new rapier.Vector3(0, 0, 0), true);
@@ -207,21 +248,63 @@ export const Vehicle = ({ position, rotation, chasisBodyRef, mobileControls }: V
 		const currentQuat = new THREE.Quaternion(currentRotation.x, currentRotation.y, currentRotation.z, currentRotation.w);
 		const upVector = new THREE.Vector3(0, 1, 0).applyQuaternion(currentQuat);
 
+		// 2a. Self-righting assist: once tilted past the threshold, nudge the
+		// chassis back toward upright instead of letting it commit to a roll.
+		// The axis that rotates the body's up vector onto the world's is simply
+		// their cross product.
+		const tilt = upVector.angleTo(_worldUp);
+		if (config.uprightAssist > 0 && tilt > config.uprightThreshold && upVector.y > -0.9) {
+			_uprightAxis.crossVectors(upVector, _worldUp);
+			if (_uprightAxis.lengthSq() > 1e-6) {
+				_uprightAxis.normalize();
+				// Scaled by mass so the assist keeps its feel if the mass changes.
+				const strength = (tilt - config.uprightThreshold) * config.uprightAssist * config.mass * delta;
+				chassisRigidBody.applyTorqueImpulse(
+					{ x: _uprightAxis.x * strength, y: _uprightAxis.y * strength, z: _uprightAxis.z * strength },
+					true
+				);
+			}
+		}
+
 		if (upVector.y < 0.1 && !merged.reset) {
 			const currentPos = chassisRigidBody.translation();
+			const groundY = getSpawnHeight(currentPos.x, currentPos.z);
 			
 			// Get current heading (yaw) so we face the same direction, but remove pitch and roll
 			const euler = new THREE.Euler().setFromQuaternion(currentQuat, "YXZ");
 			const uprightQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, euler.y, 0, "YXZ"));
 			
 			// Pop the car up slightly so it falls back down nicely
-			chassisRigidBody.setTranslation(new rapier.Vector3(currentPos.x, currentPos.y + 2.0, currentPos.z), true);
+			chassisRigidBody.setTranslation(new rapier.Vector3(currentPos.x, Math.max(currentPos.y, groundY) + 2.0, currentPos.z), true);
 			chassisRigidBody.setRotation(new rapier.Quaternion(uprightQuat.x, uprightQuat.y, uprightQuat.z, uprightQuat.w), true);
 			
 			// Kill all momentum so it doesn't instantly flip again or shoot off
 			chassisRigidBody.setLinvel(new rapier.Vector3(0, 0, 0), true);
 			chassisRigidBody.setAngvel(new rapier.Vector3(0, 0, 0), true);
 		}
+
+		// ── Stunt scoring ────────────────────────────────────────────────────
+		// All four wheels off the ground counts as air. Landing banks the time.
+		const airborne = ![0, 1, 2, 3].some((i) => controller.wheelIsInContact(i));
+
+		if (airborne && !inWater) {
+			airTime.current += delta;
+		} else if (airTime.current > 0) {
+			if (airTime.current > 0.7) {
+				const points = airTime.current * 150;
+				addScore(points);
+				GAME_STATE.bestAir = Math.max(GAME_STATE.bestAir, airTime.current);
+				announce(airTime.current > 2 ? `HUGE AIR +${Math.round(points)}` : `AIR +${Math.round(points)}`);
+			}
+			airTime.current = 0;
+		}
+
+		// ── HUD state ────────────────────────────────────────────────────────
+		const velocityNow = chassisRigidBody.linvel();
+		GAME_STATE.speed = Math.hypot(velocityNow.x, velocityNow.y, velocityNow.z) * 3.6;
+		GAME_STATE.boost = boostCharge.current;
+		GAME_STATE.airTime = airTime.current;
+		GAME_STATE.inWater = inWater;
 
 		// Camera follow: uses world position + fixed offset (no rotation follow)
 		const bodyPos = chasisMeshRef.current.getWorldPosition(_bodyPosition);
@@ -232,6 +315,8 @@ export const Vehicle = ({ position, rotation, chasisBodyRef, mobileControls }: V
 			bodyPos.z + CAMERA_CONFIG.offsetZ
 		);
 		cameraPos.y = Math.max(cameraPos.y, chassisRigidBody.translation().y + 0.5);
+		// Keep the camera above the terrain, or hills swallow it.
+		cameraPos.y = Math.max(cameraPos.y, getTerrainHeight(cameraPos.x, cameraPos.z) + 3);
 		// Vector3.lerp moves from current value toward target by a blend factor [0..1].
 		// Docs: https://threejs.org/docs/#api/en/math/Vector3.lerp
 		smoothedCameraPosition.lerp(cameraPos, t);
@@ -249,7 +334,7 @@ export const Vehicle = ({ position, rotation, chasisBodyRef, mobileControls }: V
 		<RigidBody
 			ref={chasisBodyRef}
 			colliders={false}
-			position={position}
+			position={spawnPosition}
 			rotation={rotation}
 			canSleep={false}
 			linearDamping={config.linearDamping}

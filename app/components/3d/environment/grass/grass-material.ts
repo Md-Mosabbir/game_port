@@ -18,6 +18,8 @@ import {
 	mx_noise_float
 } from 'three/tsl';
 import { applyFolioShading } from '../../materials/folio-shading';
+import { terrainHeightNode } from '@/app/systems/terrain';
+import { vegetationMaskNode } from '@/app/systems/vegetation';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // createGrassMaterial
@@ -80,11 +82,13 @@ export function createGrassMaterial(
 
 	// bladeWorldPos = absolute world position of this blade vertex
 	// (wrapping keeps it camera-relative internally but result is world space)
-	const bladeWorldPos = vec3(
-		wrappedCenterX.add(aBladeOffset.x),
-		float(0),
-		wrappedCenterZ.add(aBladeOffset.z)
-	);
+	const bladeXZ = vec2(wrappedCenterX.add(aBladeOffset.x), wrappedCenterZ.add(aBladeOffset.z));
+	const bladeGroundY = terrainHeightNode(bladeXZ);
+
+	const bladeWorldPos = vec3(bladeXZ.x, bladeGroundY, bladeXZ.y);
+
+	// Grass gives up on cliffs and above the tree line.
+	const terrainMask = vegetationMaskNode(bladeXZ, bladeGroundY);
 
 	// ── Track UV ───────────────────────────────────────────────────────────
 	// Map blade world position to [0,1] UV space matching the ping-pong FBO.
@@ -158,7 +162,7 @@ export function createGrassMaterial(
 		float(1.0).sub(step(uniforms.carHalfZ, abs(localZ)))
 	);
 
-	const finalFlattenScale = flattenScale.mul(float(1.0).sub(insideCar));
+	const finalFlattenScale = flattenScale.mul(float(1.0).sub(insideCar)).mul(terrainMask);
 
 	//const flattenScale = float(1.0).sub(flattenStrength);
 

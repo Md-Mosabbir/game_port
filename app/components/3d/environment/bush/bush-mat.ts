@@ -14,9 +14,12 @@ import {
     normalWorld,
     dot,
     texture,
+    vec2,
     float // Added float import for math inversion
 } from 'three/tsl';
 import { applyFolioShading } from '../../materials/folio-shading';
+import { terrainHeightNode } from '@/app/systems/terrain';
+import { vegetationMaskNode } from '@/app/systems/vegetation';
 
 /**
  * createBushMaterial
@@ -86,10 +89,15 @@ export function createBushMaterial(
     const swayX = windBend;
     const swayZ = windBend.mul(0.35);
 
+    // ─── TERRAIN ─────────────────────────────────────────────────────────
+    const spawnXZ2 = vec2(wrappedX, wrappedZ);
+    const groundY = terrainHeightNode(spawnXZ2);
+    const growth = vegetationMaskNode(spawnXZ2, groundY);
+
     // ─── FINAL POSITION ──────────────────────────────────────────────────
     material.positionNode = vec3(
         positionLocal.x.add(swayX).add(wrappedX),
-        positionLocal.y,
+        positionLocal.y.mul(growth).add(groundY),
         positionLocal.z.add(swayZ).add(wrappedZ)
     );
 

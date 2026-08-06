@@ -16,6 +16,8 @@ import {
 } from 'three/tsl';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { applyFolioShading } from '../../materials/folio-shading';
+import { terrainHeightNode } from '@/app/systems/terrain';
+import { vegetationMaskNode } from '@/app/systems/vegetation';
 
 export function createTrunkMaterial(uniforms: any, config: any) {
     const material = new MeshStandardNodeMaterial({ roughness: 0.8, metalness: 0.0 });
@@ -52,8 +54,14 @@ export function createTrunkMaterial(uniforms: any, config: any) {
     const swayX = directionalGust.mul(uIntensity).mul(2.0).mul(heightMask);
     const swayZ = directionalGust.mul(uIntensity).mul(0.4).mul(heightMask);
 
+    // ─── TERRAIN ─────────────────────────────────────────────────────────
+    const spawnXZ2 = vec2(wrappedX, wrappedZ);
+    const groundY = terrainHeightNode(spawnXZ2);
+    const growth = vegetationMaskNode(spawnXZ2, groundY);
+
     const worldX = positionLocal.x.add(swayX).add(wrappedX);
-    const worldY = positionLocal.y;
+    // Sunk slightly so the trunk base never floats over a slope.
+    const worldY = positionLocal.y.mul(growth).add(groundY).sub(0.3);
     const worldZ = positionLocal.z.add(swayZ).add(wrappedZ);
 
     material.positionNode = vec3(worldX, worldY, worldZ);
