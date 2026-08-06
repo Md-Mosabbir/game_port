@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Fn, If, float, frontFacing, max, mix, normalWorld, positionWorld, vec3, vec4 } from 'three/tsl';
+import { Fn, If, float, frontFacing, max, mix, mx_noise_float, normalWorld, positionViewDirection, positionWorld, time, vec2, vec3, vec4 } from 'three/tsl';
 import { shadingUniforms } from '@/app/controls/shadingControls';
 import { fogNodes } from '@/app/systems/fog-nodes';
 
@@ -49,6 +49,8 @@ export type FolioShadingOptions = {
 	hasDropShadows?: boolean;
 	hasLightBounce?: boolean;
 	hasFog?: boolean;
+	// Light bleeding through thin surfaces — leaves, grass blades. 0 for solids.
+	translucency?: number;
 };
 
 export const applyFolioShading = (material: NodeMaterialLike, options: FolioShadingOptions) => {
@@ -61,6 +63,7 @@ export const applyFolioShading = (material: NodeMaterialLike, options: FolioShad
 		hasDropShadows = true,
 		hasLightBounce = true,
 		hasFog = true,
+		translucency = 0,
 	} = options;
 
 	// Shadow catcher: pull the shadow map value out as a float and neutralise it
@@ -109,6 +112,19 @@ export const applyFolioShading = (material: NodeMaterialLike, options: FolioShad
 		// Light
 		outputColor.mulAssign(shadingUniforms.lightColor.mul(shadingUniforms.lightIntensity));
 
+		// Cloud shadows drifting overhead. One noise field in world space, so
+		// every surface in the scene darkens by the same amount at the same
+		// place — that consistency is what reads as an actual cloud passing.
+		const drift = time.mul(shadingUniforms.cloudSpeed);
+		const clouds = mx_noise_float(
+			positionWorld.xz.add(vec2(drift, drift.mul(0.6))).mul(shadingUniforms.cloudScale)
+		).mul(0.5).add(0.5);
+		const sunlit = clouds.smoothstep(
+			shadingUniforms.cloudCoverage.sub(shadingUniforms.cloudSoftness),
+			shadingUniforms.cloudCoverage.add(shadingUniforms.cloudSoftness)
+		);
+		outputColor.mulAssign(mix(shadingUniforms.cloudDarkness, float(1), sunlit));
+
 		// Core shadow (diffusion)
 		let coreShadowMix: TSLNode = float(0);
 		if (hasCoreShadows) {
@@ -128,6 +144,20 @@ export const applyFolioShading = (material: NodeMaterialLike, options: FolioShad
 			const combinedShadowMix = max(coreShadowMix, dropShadowMix, shadowNode).clamp(0, 1);
 			const shadowColor = baseColor.rgb.mul(shadingUniforms.shadowColor).rgb;
 			outputColor.assign(mix(outputColor, shadowColor, combinedShadowMix));
+		}
+
+		// Translucency: looking toward the sun through foliage lights the leaves
+		// from behind. Added after the shadow tint so backlit leaves glow even
+		// where they are in shade — which is exactly when you notice it.
+		if (translucency > 0) {
+			const towardSun = positionViewDirection.negate().dot(shadingUniforms.lightDirection).max(0).pow(3);
+			outputColor.addAssign(
+				shadingUniforms.translucencyColor
+					.mul(shadingUniforms.translucencyStrength)
+					.mul(towardSun)
+					.mul(translucency)
+					.mul(sunlit)
+			);
 		}
 
 		// Fog

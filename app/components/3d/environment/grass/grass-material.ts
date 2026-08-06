@@ -218,7 +218,7 @@ export function createGrassMaterial(
 	material.colorNode = bladeColor;
 
 	// Stylised diffusion + light bounce + tinted shadows + fog
-	applyFolioShading(material, { colorNode: bladeColor });
+	applyFolioShading(material, { colorNode: bladeColor, translucency: 0.7 });
 
 
 

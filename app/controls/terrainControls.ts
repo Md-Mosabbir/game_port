@@ -5,11 +5,21 @@ import { TERRAIN_CONFIG, bakeTerrain } from '@/app/systems/terrain';
 
 // Purely visual terrain settings — these are live uniforms, no rebake needed.
 export const TERRAIN_VISUAL = {
+	// Ground palette. Fully procedural now — no texture, so no tiling.
+	grassColor: '#4c7838',    // Lush meadow
+	grassDryColor: '#87914a', // Sun-bleached drift
+	soilColor: '#5c4a34',     // Bare earth patches
 	rockColor: '#6f6a5e',
+	rockDarkColor: '#464236', // Darker strata band on cliffs
+	aoStrength: 0.45,         // How dark hollows and creases go
+	mossColor: '#38512a',     // Damp growth collecting in hollows
+	pathColor: '#8f7d5e',     // Worn dirt trail
+	pathEdgeColor: '#6b6244', // Scuffed grass at the edge of a trail
+	pathWidth: 0.06,          // Half-width of the ribbon in noise units
+	pathScale: 0.005,         // Lower = longer, lazier trails
 	rockSlopeLow: 0.45,  // normal.y below this is fully rock
 	rockSlopeHigh: 0.78, // above this is fully ground
 	peakColor: '#c8c6bd',
-	dryColor: '#6f8c3f', // Patchy lighter meadow, not dry sand
 	shoreColor: '#b9a888', // Wet sand at the water's edge
 	siltColor: '#3d4a3a',  // Darker bed under the water
 	detailScale: 0.9,
@@ -31,11 +41,20 @@ export const TERRAIN_VISUAL = {
 };
 
 export const terrainVisualUniforms = {
+	grassColor: uniform(new THREE.Color(TERRAIN_VISUAL.grassColor)),
+	grassDryColor: uniform(new THREE.Color(TERRAIN_VISUAL.grassDryColor)),
+	soilColor: uniform(new THREE.Color(TERRAIN_VISUAL.soilColor)),
 	rockColor: uniform(new THREE.Color(TERRAIN_VISUAL.rockColor)),
+	rockDarkColor: uniform(new THREE.Color(TERRAIN_VISUAL.rockDarkColor)),
+	aoStrength: uniform(TERRAIN_VISUAL.aoStrength),
+	mossColor: uniform(new THREE.Color(TERRAIN_VISUAL.mossColor)),
+	pathColor: uniform(new THREE.Color(TERRAIN_VISUAL.pathColor)),
+	pathEdgeColor: uniform(new THREE.Color(TERRAIN_VISUAL.pathEdgeColor)),
+	pathWidth: uniform(TERRAIN_VISUAL.pathWidth),
+	pathScale: uniform(TERRAIN_VISUAL.pathScale),
 	rockSlopeLow: uniform(TERRAIN_VISUAL.rockSlopeLow),
 	rockSlopeHigh: uniform(TERRAIN_VISUAL.rockSlopeHigh),
 	peakColor: uniform(new THREE.Color(TERRAIN_VISUAL.peakColor)),
-	dryColor: uniform(new THREE.Color(TERRAIN_VISUAL.dryColor)),
 	shoreColor: uniform(new THREE.Color(TERRAIN_VISUAL.shoreColor)),
 	siltColor: uniform(new THREE.Color(TERRAIN_VISUAL.siltColor)),
 	detailScale: uniform(TERRAIN_VISUAL.detailScale),
@@ -99,6 +118,21 @@ export const setupTerrainControls = () => {
 
 	const lookFolder = addFolder('Terrain Look');
 	if (lookFolder) {
+		lookFolder.addBinding(TERRAIN_VISUAL, 'grassColor', { label: 'meadow' }).on('change', (ev) => {
+			terrainVisualUniforms.grassColor.value.set(ev.value);
+		});
+		lookFolder.addBinding(TERRAIN_VISUAL, 'grassDryColor', { label: 'dry drift' }).on('change', (ev) => {
+			terrainVisualUniforms.grassDryColor.value.set(ev.value);
+		});
+		lookFolder.addBinding(TERRAIN_VISUAL, 'soilColor', { label: 'bare soil' }).on('change', (ev) => {
+			terrainVisualUniforms.soilColor.value.set(ev.value);
+		});
+		lookFolder.addBinding(TERRAIN_VISUAL, 'rockDarkColor', { label: 'rock strata' }).on('change', (ev) => {
+			terrainVisualUniforms.rockDarkColor.value.set(ev.value);
+		});
+		lookFolder.addBinding(TERRAIN_VISUAL, 'aoStrength', { min: 0, max: 1, step: 0.01, label: 'cavity shading' }).on('change', (ev) => {
+			terrainVisualUniforms.aoStrength.value = ev.value;
+		});
 		lookFolder.addBinding(TERRAIN_VISUAL, 'rockColor').on('change', (ev) => {
 			terrainVisualUniforms.rockColor.value.set(ev.value);
 		});
@@ -118,9 +152,6 @@ export const setupTerrainControls = () => {
 			terrainVisualUniforms.peakHigh.value = ev.value;
 		});
 
-		lookFolder.addBinding(TERRAIN_VISUAL, 'dryColor', { label: 'dry grass' }).on('change', (ev) => {
-			terrainVisualUniforms.dryColor.value.set(ev.value);
-		});
 		lookFolder.addBinding(TERRAIN_VISUAL, 'shoreColor', { label: 'shoreline' }).on('change', (ev) => {
 			terrainVisualUniforms.shoreColor.value.set(ev.value);
 		});
@@ -135,6 +166,25 @@ export const setupTerrainControls = () => {
 		});
 		lookFolder.addBinding(TERRAIN_VISUAL, 'debugHeight', { label: 'debug: height as colour' }).on('change', (ev) => {
 			terrainVisualUniforms.debugHeight.value = ev.value ? 1 : 0;
+		});
+	}
+
+	const pathFolder = addFolder('Paths');
+	if (pathFolder) {
+		pathFolder.addBinding(TERRAIN_VISUAL, 'pathColor', { label: 'dirt' }).on('change', (ev) => {
+			terrainVisualUniforms.pathColor.value.set(ev.value);
+		});
+		pathFolder.addBinding(TERRAIN_VISUAL, 'pathEdgeColor', { label: 'scuffed edge' }).on('change', (ev) => {
+			terrainVisualUniforms.pathEdgeColor.value.set(ev.value);
+		});
+		pathFolder.addBinding(TERRAIN_VISUAL, 'pathWidth', { min: 0, max: 0.3, step: 0.005, label: 'width' }).on('change', (ev) => {
+			terrainVisualUniforms.pathWidth.value = ev.value;
+		});
+		pathFolder.addBinding(TERRAIN_VISUAL, 'pathScale', { min: 0.001, max: 0.03, step: 0.0005, label: 'winding' }).on('change', (ev) => {
+			terrainVisualUniforms.pathScale.value = ev.value;
+		});
+		pathFolder.addBinding(TERRAIN_VISUAL, 'mossColor', { label: 'hollow moss' }).on('change', (ev) => {
+			terrainVisualUniforms.mossColor.value.set(ev.value);
 		});
 	}
 

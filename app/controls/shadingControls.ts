@@ -25,6 +25,19 @@ export const SHADING_CONFIG = {
 
 	// Shadow colour when the day cycle is not driving it
 	shadowColor: '#7d8ed4',
+
+	// Cloud shadows drifting across the world. Applied inside the shared shading
+	// pass, so ground, grass, trees and bushes all darken together — which is
+	// what sells it as cloud rather than a texture.
+	cloudScale: 0.0035,
+	cloudSpeed: 0.55,
+	cloudCoverage: 0.52,
+	cloudSoftness: 0.22,
+	cloudDarkness: 0.62,
+
+	// Foliage catching light from behind, the way real leaves do.
+	translucencyColor: '#c8ff8a',
+	translucencyStrength: 0.85,
 };
 
 export const shadingUniforms = {
@@ -40,6 +53,17 @@ export const shadingUniforms = {
 	lightBounceEdgeHigh: uniform(float(SHADING_CONFIG.lightBounceEdgeHigh)),
 	lightBounceDistance: uniform(float(SHADING_CONFIG.lightBounceDistance)),
 	lightBounceMultiplier: uniform(float(SHADING_CONFIG.lightBounceMultiplier)),
+
+	// Clouds
+	cloudScale: uniform(SHADING_CONFIG.cloudScale),
+	cloudSpeed: uniform(SHADING_CONFIG.cloudSpeed),
+	cloudCoverage: uniform(SHADING_CONFIG.cloudCoverage),
+	cloudSoftness: uniform(SHADING_CONFIG.cloudSoftness),
+	cloudDarkness: uniform(SHADING_CONFIG.cloudDarkness),
+
+	// Translucency
+	translucencyColor: uniform(new THREE.Color(SHADING_CONFIG.translucencyColor)),
+	translucencyStrength: uniform(SHADING_CONFIG.translucencyStrength),
 
 	// Core shadow
 	coreShadowEdgeLow: uniform(float(SHADING_CONFIG.coreShadowEdgeLow)),
@@ -80,6 +104,31 @@ export const setupShadingControls = () => {
 		});
 		diffusionFolder.addBinding(SHADING_CONFIG, 'shadowColor', { label: 'shadow color' }).on('change', (ev) => {
 			shadingUniforms.shadowColor.value.set(ev.value);
+		});
+	}
+
+	const cloudFolder = addFolder('Cloud Shadows');
+	if (cloudFolder) {
+		cloudFolder.addBinding(SHADING_CONFIG, 'cloudScale', { min: 0.0005, max: 0.02, step: 0.0005, label: 'size' }).on('change', (ev) => {
+			shadingUniforms.cloudScale.value = ev.value;
+		});
+		cloudFolder.addBinding(SHADING_CONFIG, 'cloudSpeed', { min: 0, max: 5, step: 0.01, label: 'drift' }).on('change', (ev) => {
+			shadingUniforms.cloudSpeed.value = ev.value;
+		});
+		cloudFolder.addBinding(SHADING_CONFIG, 'cloudCoverage', { min: 0, max: 1, step: 0.01, label: 'coverage' }).on('change', (ev) => {
+			shadingUniforms.cloudCoverage.value = ev.value;
+		});
+		cloudFolder.addBinding(SHADING_CONFIG, 'cloudSoftness', { min: 0.01, max: 0.6, step: 0.01, label: 'edge softness' }).on('change', (ev) => {
+			shadingUniforms.cloudSoftness.value = ev.value;
+		});
+		cloudFolder.addBinding(SHADING_CONFIG, 'cloudDarkness', { min: 0, max: 1, step: 0.01, label: 'depth' }).on('change', (ev) => {
+			shadingUniforms.cloudDarkness.value = ev.value;
+		});
+		cloudFolder.addBinding(SHADING_CONFIG, 'translucencyColor', { label: 'leaf glow' }).on('change', (ev) => {
+			shadingUniforms.translucencyColor.value.set(ev.value);
+		});
+		cloudFolder.addBinding(SHADING_CONFIG, 'translucencyStrength', { min: 0, max: 3, step: 0.01, label: 'leaf glow amount' }).on('change', (ev) => {
+			shadingUniforms.translucencyStrength.value = ev.value;
 		});
 	}
 

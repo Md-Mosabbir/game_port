@@ -146,6 +146,10 @@ export function Trees({
     // position node. The shader needs to know it to scale the whole tree down on
     // ground too steep to grow on.
     const spawnLift = new Float32Array(count);
+    // The instance matrix scales everything the position node emits — including
+    // world-space terms. The shader needs the scale so it can divide those back
+    // out, otherwise a tree lands at scale x its intended position.
+    const spawnScale = new Float32Array(count);
 
     for (let i = 0; i < count; i++) {
       const d = spawnData[i];
@@ -153,6 +157,7 @@ export function Trees({
       spawnXZ[i * 2] = d.x;
       spawnXZ[i * 2 + 1] = d.z;
       spawnLift[i] = d.height;
+      spawnScale[i] = d.scale;
 
       // Unified Trunk Matrix Mapping
       dummy.position.set(0, 0, 0); 
@@ -176,6 +181,8 @@ export function Trees({
     mergedTrunkGeometry.setAttribute('aSpawnXZ', new THREE.InstancedBufferAttribute(spawnXZ, 2));
     canopyGeometry.setAttribute('aSpawnLift', new THREE.InstancedBufferAttribute(spawnLift, 1));
     mergedTrunkGeometry.setAttribute('aSpawnLift', new THREE.InstancedBufferAttribute(spawnLift, 1));
+    canopyGeometry.setAttribute('aSpawnScale', new THREE.InstancedBufferAttribute(spawnScale, 1));
+    mergedTrunkGeometry.setAttribute('aSpawnScale', new THREE.InstancedBufferAttribute(spawnScale, 1));
     
   }, [spawnData, canopyGeometry, mergedTrunkGeometry]);
 

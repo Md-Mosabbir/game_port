@@ -3,11 +3,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
-import { mix, mx_noise_float, positionLocal, positionWorld, texture, uniform, vec2, vec3 } from 'three/tsl';
+import { cameraPosition, float, mix, mx_noise_float, positionLocal, positionWorld, uniform, vec2, vec3 } from 'three/tsl';
 import { applyFolioShading } from '../materials/folio-shading';
 import { TERRAIN_CONFIG, getTerrainHeight, sampleTerrainPatch, terrainHeightNode, terrainNormalNode } from '@/app/systems/terrain';
-import { TERRAIN_VISUAL, subscribeToTerrainBake, terrainVisualUniforms } from '@/app/controls/terrainControls';
+import { subscribeToTerrainBake, terrainVisualUniforms } from '@/app/controls/terrainControls';
 import { waterUniforms } from '@/app/controls/waterControls';
+import { pathMaskNode } from '@/app/systems/paths';
 
 interface WorldGroundProps {
     chasisBodyRef?: React.RefObject<RapierRigidBody | null>;
@@ -50,69 +51,6 @@ export const WorldGround = ({ chasisBodyRef }: WorldGroundProps) => {
         });
     }, [patchSize]);
 
-    const fieldTexture = useMemo(() => {
-        // Seeded, so the ground texture is identical every run (and so this
-        // stays a pure render — rand() here is neither).
-        let seed = 0x9e3779b9;
-        const rand = () => {
-            seed = (seed + 0x6d2b79f5) | 0;
-            let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-        };
-
-        const canvas = document.createElement('canvas');
-        canvas.width = 512;
-        canvas.height = 512;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return null;
-
-        // Meadow soil: a deep green base that reads as vegetated ground rather
-        // than sand, speckled with darker undergrowth and a little warm earth
-        // showing through.
-        ctx.fillStyle = '#4a6b32';
-        ctx.fillRect(0, 0, 512, 512);
-
-        // Darker clumps of undergrowth
-        for (let i = 0; i < 320; i++) {
-            const x = rand() * 512;
-            const y = rand() * 512;
-            const size = rand() * 7 + 3;
-            ctx.fillStyle = `rgba(42, 74, 30, ${rand() * 0.45 + 0.2})`;
-            ctx.beginPath();
-            ctx.arc(x, y, size, 0, Math.PI * 2);
-            ctx.fill();
-        }
-
-        // Lighter growth catching the light
-        for (let i = 0; i < 260; i++) {
-            const x = rand() * 512;
-            const y = rand() * 512;
-            const size = rand() * 4 + 1.5;
-            ctx.fillStyle = `rgba(124, 158, 74, ${rand() * 0.4 + 0.2})`;
-            ctx.beginPath();
-            ctx.arc(x, y, size, 0, Math.PI * 2);
-            ctx.fill();
-        }
-
-        // Occasional bare earth
-        for (let i = 0; i < 90; i++) {
-            const x = rand() * 512;
-            const y = rand() * 512;
-            const size = rand() * 3 + 1;
-            ctx.fillStyle = `rgba(122, 92, 58, ${rand() * 0.35 + 0.15})`;
-            ctx.beginPath();
-            ctx.arc(x, y, size, 0, Math.PI * 2);
-            ctx.fill();
-        }
-
-        const tex = new THREE.CanvasTexture(canvas);
-        tex.wrapS = THREE.RepeatWrapping;
-        tex.wrapT = THREE.RepeatWrapping;
-        tex.anisotropy = 8;
-        return tex;
-    }, []);
-
     // The mesh origin, fed to the shader so it can turn local vertices into the
     // world coordinates the heightmap is keyed on.
     const groundOrigin = useMemo(() => uniform(new THREE.Vector2()), []);
@@ -126,78 +64,103 @@ export const WorldGround = ({ chasisBodyRef }: WorldGroundProps) => {
     }, []);
 
     const material = useMemo(() => {
-        const m = new MeshStandardNodeMaterial({
-            roughness: 0.9,
-            metalness: 0.02,
-        });
+        const m = new MeshStandardNodeMaterial({ roughness: 0.95, metalness: 0.0 });
 
         const worldXZ = vec2(positionLocal.x, positionLocal.z).add(groundOrigin);
         m.positionNode = vec3(positionLocal.x, terrainHeightNode(worldXZ), positionLocal.z);
-        // Replaced below with a detail-perturbed normal when the ground texture
-        // is available; this is the fallback.
         m.normalNode = terrainNormalNode(worldXZ);
 
-        if (fieldTexture) {
-            const worldUV = positionWorld.xz.mul(0.05);
-            const dirtColor = texture(fieldTexture, worldUV);
+        // ── Terrain samples ──────────────────────────────────────────────────
+        // Taken once and reused for the normal, the slope and the curvature,
+        // rather than three separate sets of taps.
+        const p = positionWorld.xz;
+        const e = 1.5;
+        const hC = terrainHeightNode(p);
+        const hL = terrainHeightNode(p.sub(vec2(e, 0)));
+        const hR = terrainHeightNode(p.add(vec2(e, 0)));
+        const hD = terrainHeightNode(p.sub(vec2(0, e)));
+        const hU = terrainHeightNode(p.add(vec2(0, e)));
 
-            // ── Surface detail ───────────────────────────────────────────────
-            // The heightmap resolves down to 2 units, so on its own the surface
-            // reads as a smooth sheet. This adds grain finer than the heightmap
-            // can carry, as a normal perturbation only — free of any physics or
-            // bake cost, since it never changes where the ground actually is.
-            const detailScale = terrainVisualUniforms.detailScale;
-            const step = 0.35;
-            const grainAt = (offset: ReturnType<typeof vec2>) =>
-                mx_noise_float(positionWorld.xz.add(offset).mul(detailScale));
-            const grainX = grainAt(vec2(step, 0)).sub(grainAt(vec2(step, 0).negate()));
-            const grainZ = grainAt(vec2(0, step)).sub(grainAt(vec2(0, step).negate()));
+        const surfaceNormal = vec3(hL.sub(hR), e * 2, hD.sub(hU)).normalize();
 
-            const baseNormal = terrainNormalNode(positionWorld.xz);
-            const normal = baseNormal
-                .add(vec3(grainX, 0, grainZ).mul(terrainVisualUniforms.detailStrength))
-                .normalize();
+        // Curvature: the height here against the average of its neighbours.
+        // Negative in hollows, positive on ridges. This is the single biggest
+        // "expensive-looking" cue — it darkens creases and catches light on
+        // edges the way real ground does, and it costs nothing extra because
+        // the samples are already here.
+        const curvature = hC.sub(hL.add(hR).add(hD).add(hU).mul(0.25));
+        const cavity = curvature.smoothstep(-0.35, 0.35);
 
-            // oneMinus rather than reversed smoothstep edges — GLSL leaves
-            // smoothstep undefined when edge0 > edge1.
-            const slope = normal.y.smoothstep(terrainVisualUniforms.rockSlopeLow, terrainVisualUniforms.rockSlopeHigh).oneMinus();
-            const altitude = positionWorld.y.smoothstep(terrainVisualUniforms.peakLow, terrainVisualUniforms.peakHigh);
+        // ── Detail, faded with distance ──────────────────────────────────────
+        // Fine grain is only meaningful up close; left on at range it turns into
+        // shimmer, which is exactly what makes ground look cheap.
+        const viewDistance = positionWorld.distance(cameraPosition);
+        const nearness = viewDistance.smoothstep(90, 18);
 
-            // ── Colour ───────────────────────────────────────────────────────
-            // Broken up by two scales of noise so the ground is not one flat
-            // tone: wide patches of dry grass over dirt, then fine grain.
-            const patches = mx_noise_float(positionWorld.xz.mul(0.012)).add(1).mul(0.5);
-            const tinted = mix(dirtColor.rgb, terrainVisualUniforms.dryColor, patches.smoothstep(0.45, 0.85));
-            const grained = tinted.mul(grainAt(vec2(0, 0)).mul(0.12).add(1));
+        const grainAt = (offset: ReturnType<typeof vec2>) =>
+            mx_noise_float(p.add(offset).mul(terrainVisualUniforms.detailScale));
+        const grainC = grainAt(vec2(0, 0));
+        const step = 0.4;
+        const grainX = grainAt(vec2(step, 0)).sub(grainC);
+        const grainZ = grainAt(vec2(0, step)).sub(grainC);
 
-            const groundColor = mix(grained, terrainVisualUniforms.rockColor, slope);
-            const withPeaks = mix(groundColor, terrainVisualUniforms.peakColor, altitude);
+        const normal = surfaceNormal
+            .add(vec3(grainX, 0, grainZ).mul(terrainVisualUniforms.detailStrength.mul(nearness)))
+            .normalize();
 
-            // Shoreline: a wet band where the ground meets the water line, and
-            // silt below it. Borrowed from folio, where the same band is what
-            // makes its water read as water rather than a blue plane.
-            const toWater = positionWorld.y.sub(waterUniforms.level);
-            const wetBand = toWater.abs().smoothstep(waterUniforms.foamWidth.mul(1.6), 0);
-            const submerged = toWater.smoothstep(0, -2.5);
-            const shoreline = mix(withPeaks, terrainVisualUniforms.shoreColor, wetBand.mul(0.75));
-            const finalColor = mix(shoreline, terrainVisualUniforms.siltColor, submerged);
+        // ── Colour ───────────────────────────────────────────────────────────
+        // Three scales of variation, none of them tiling: broad biome drift,
+        // meadow patches, then grain. Fully procedural, so there is no repeat
+        // to spot however far you drive.
+        const macro = mx_noise_float(p.mul(0.0035)).mul(0.5).add(0.5);
+        const meso = mx_noise_float(p.mul(0.03)).mul(0.5).add(0.5);
 
-            // Debug: show the height the shader actually samples, banded so it
-            // is obvious whether it varies at all.
-            const debugColor = vec3(
-                positionWorld.y.mul(0.02).fract(),
-                positionWorld.y.mul(0.005).fract(),
-                terrainHeightNode(positionWorld.xz).mul(0.01).fract(),
-            );
-            const shownColor = mix(finalColor, debugColor, terrainVisualUniforms.debugHeight);
+        const lush = mix(terrainVisualUniforms.grassColor, terrainVisualUniforms.grassDryColor, macro.smoothstep(0.35, 0.75));
+        const withPatches = mix(lush, terrainVisualUniforms.soilColor, meso.smoothstep(0.62, 0.9));
+        const meadow = withPatches.mul(grainC.mul(0.13).mul(nearness).add(1));
 
-            m.colorNode = shownColor;
-            m.normalNode = normal;
-            applyFolioShading(m, { colorNode: shownColor, normalNode: normal, hasLightBounce: false });
-        }
+        // Rock uses vertical banding rather than the flat XZ projection, so
+        // cliffs get strata instead of a smeared top-down texture.
+        const strata = mx_noise_float(vec3(p.mul(0.05), positionWorld.y.mul(0.35))).mul(0.5).add(0.5);
+        const rock = mix(terrainVisualUniforms.rockColor, terrainVisualUniforms.rockDarkColor, strata);
+
+        const slope = normal.y.smoothstep(terrainVisualUniforms.rockSlopeLow, terrainVisualUniforms.rockSlopeHigh).oneMinus();
+        const altitude = positionWorld.y.smoothstep(terrainVisualUniforms.peakLow, terrainVisualUniforms.peakHigh);
+
+        // Damp growth gathers in hollows, ridges dry out — driven by the same
+        // curvature that does the cavity shading.
+        const mossy = mix(meadow, terrainVisualUniforms.mossColor, cavity.oneMinus().mul(0.55));
+
+        // Worn trails, matching the mask that keeps grass off them.
+        const path = pathMaskNode(p, surfaceNormal.y);
+        const withEdge = mix(mossy, terrainVisualUniforms.pathEdgeColor, path.smoothstep(0, 0.55).mul(0.7));
+        const withPath = mix(withEdge, terrainVisualUniforms.pathColor, path.smoothstep(0.35, 0.95));
+
+        const groundColor = mix(withPath, rock, slope);
+        const withPeaks = mix(groundColor, terrainVisualUniforms.peakColor, altitude);
+
+        // Shoreline: a wet band where the ground meets the water line, and silt
+        // below it. Borrowed from folio, where the same band is what makes its
+        // water read as water rather than a blue plane.
+        const toWater = positionWorld.y.sub(waterUniforms.level);
+        const wetBand = toWater.abs().smoothstep(waterUniforms.foamWidth.mul(1.6), 0);
+        const submerged = toWater.smoothstep(0, -2.5);
+        const shoreline = mix(withPeaks, terrainVisualUniforms.shoreColor, wetBand.mul(0.75));
+        const bedded = mix(shoreline, terrainVisualUniforms.siltColor, submerged);
+
+        // Cavity shading last, so it darkens whatever the surface turned out to
+        // be rather than one particular layer.
+        const occluded = bedded.mul(mix(terrainVisualUniforms.aoStrength.oneMinus(), float(1), cavity));
+
+        const debugColor = vec3(positionWorld.y.mul(0.02).fract(), positionWorld.y.mul(0.005).fract(), cavity);
+        const shownColor = mix(occluded, debugColor, terrainVisualUniforms.debugHeight);
+
+        m.colorNode = shownColor;
+        m.normalNode = normal;
+        applyFolioShading(m, { colorNode: shownColor, normalNode: normal, hasLightBounce: false });
 
         return m;
-    }, [fieldTexture, groundOrigin]);
+    }, [groundOrigin]);
 
     // Physics/visual agreement check. Casts a ray straight down onto the real
     // collider and compares it with the height the shaders displace by. These

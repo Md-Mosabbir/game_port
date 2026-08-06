@@ -133,7 +133,7 @@ export function createBushMaterial(
     material.colorNode = finalColor;
 
     // Stylised diffusion + light bounce + tinted shadows + fog
-    applyFolioShading(material, { colorNode: finalColor });
+    applyFolioShading(material, { colorNode: finalColor, translucency: 0.85 });
 
     return { material };
 }

@@ -55,14 +55,19 @@ export function createTrunkMaterial(uniforms: any, config: any) {
     const swayZ = directionalGust.mul(uIntensity).mul(0.4).mul(heightMask);
 
     // ─── TERRAIN ─────────────────────────────────────────────────────────
+    // Everything below is divided by the instance scale, because the instance
+    // matrix multiplies this node's output by it. Without that the tree renders
+    // at scale x its wrapped position while the height is sampled at the
+    // unscaled one — so it floats or sinks.
+    const aSpawnScale = float(attribute('aSpawnScale', 'float'));
     const spawnXZ2 = vec2(wrappedX, wrappedZ);
     const groundY = terrainHeightNode(spawnXZ2);
     const growth = vegetationMaskNode(spawnXZ2, groundY);
 
-    const worldX = positionLocal.x.add(swayX).add(wrappedX);
+    const worldX = positionLocal.x.add(swayX).add(wrappedX.div(aSpawnScale));
     // Sunk slightly so the trunk base never floats over a slope.
-    const worldY = positionLocal.y.mul(growth).add(groundY).sub(0.3);
-    const worldZ = positionLocal.z.add(swayZ).add(wrappedZ);
+    const worldY = positionLocal.y.mul(growth).add(groundY.sub(0.25).div(aSpawnScale));
+    const worldZ = positionLocal.z.add(swayZ).add(wrappedZ.div(aSpawnScale));
 
     material.positionNode = vec3(worldX, worldY, worldZ);
 

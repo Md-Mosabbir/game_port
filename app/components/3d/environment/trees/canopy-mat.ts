@@ -32,6 +32,8 @@ export function createCanopyMaterial(
     config?: {
         windSpeed?: number;
         swayIntensity?: number;
+        treeHeight?: number;
+        canopyHeightFrac?: number;
     }
 ): MeshStandardNodeMaterial {
 
@@ -79,21 +81,30 @@ export function createCanopyMaterial(
     const swayX = directionalGust.mul(uIntensity).mul(2.0);
     const swayZ = directionalGust.mul(uIntensity).mul(0.4);
 
-    const liftAmount = 5.0; 
+    // The instance matrix already lifts the canopy to the trunk top (aSpawnLift
+    // = trunk height). This shifts it from there to the requested fraction of
+    // trunk height, so the foliage sits over the branches instead of hovering
+    // above the trunk — and it tracks treeHeight instead of being a fixed +5.
+    const trunkHeight = config?.treeHeight ?? 12.0;
+    const liftAmount = trunkHeight * ((config?.canopyHeightFrac ?? 1.71) - 1.0);
 
     // ─── TERRAIN ─────────────────────────────────────────────────────────
     // Sit on the ground, and shrink away where trees should not grow. The
     // instance matrix adds aSpawnLift after this node runs, so that part of the
     // height is scaled here by hand.
+    // World-space terms are divided by the instance scale, which the instance
+    // matrix re-applies — see the same note in trunk-mat.
+    const aSpawnLift = float(attribute('aSpawnLift', 'float'));
+    const aSpawnScale = float(attribute('aSpawnScale', 'float'));
     const spawnXZ2 = vec2(wrappedX, wrappedZ);
     const groundY = terrainHeightNode(spawnXZ2);
     const growth = vegetationMaskNode(spawnXZ2, groundY);
-    const aSpawnLift = attribute('aSpawnLift', 'float');
 
     material.positionNode = vec3(
-        positionLocal.x.add(swayX).add(wrappedX),
-        positionLocal.y.add(liftAmount).mul(growth).sub(aSpawnLift.mul(growth.oneMinus())).add(groundY),
-        positionLocal.z.add(swayZ).add(wrappedZ)
+        positionLocal.x.add(swayX).add(wrappedX.div(aSpawnScale)),
+        positionLocal.y.add(liftAmount).mul(growth)
+            .add(groundY.sub(0.25).sub(aSpawnLift.mul(growth.oneMinus())).div(aSpawnScale)),
+        positionLocal.z.add(swayZ).add(wrappedZ.div(aSpawnScale))
     );
 
     // ─── TEXTURES ────────────────────────────────────────────────────────
@@ -159,7 +170,7 @@ export function createCanopyMaterial(
     material.colorNode = baseColor;
 
     // Stylised diffusion + light bounce + tinted shadows + fog
-    applyFolioShading(material, { colorNode: baseColor });
+    applyFolioShading(material, { colorNode: baseColor, translucency: 1.0 });
 
     return material;
 }

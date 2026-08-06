@@ -2,6 +2,7 @@ import { float, vec2 } from 'three/tsl';
 import { terrainHeightNode } from './terrain';
 import { terrainVisualUniforms } from '@/app/controls/terrainControls';
 import { waterUniforms } from '@/app/controls/waterControls';
+import { pathMaskNode } from './paths';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Where plants are allowed to grow.
@@ -36,5 +37,8 @@ export const vegetationMaskNode = (xz: TSLNode, height: TSLNode) => {
 	// Nothing grows below the water line, and it thins out just above it.
 	const shoreMask = height.smoothstep(waterUniforms.level, waterUniforms.level.add(1.5));
 
-	return slopeMask.mul(altitudeMask).mul(shoreMask);
+	// Worn paths are worn because nothing grows on them.
+	const pathMask = pathMaskNode(xz, normalY).oneMinus();
+
+	return slopeMask.mul(altitudeMask).mul(shoreMask).mul(pathMask);
 };
